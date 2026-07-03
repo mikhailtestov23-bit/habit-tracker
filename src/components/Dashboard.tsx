@@ -6,6 +6,7 @@ import {
   Bell,
   BookOpen,
   Check,
+  CircleHelp,
   CircleCheck,
   Copy,
   Crown,
@@ -33,7 +34,7 @@ import {
   X
 } from "lucide-react";
 import type { Session } from "@supabase/supabase-js";
-import type { CSSProperties, FormEvent } from "react";
+import type { CSSProperties, FormEvent, ReactNode } from "react";
 import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { FrequencyType, Habit, HabitProgress, PeriodUnit, TrackerState, UnlockedAchievement } from "@/lib/types";
@@ -62,6 +63,11 @@ type ImportPreview = {
 };
 
 type AuthMode = "sign-in" | "sign-up";
+
+type HabitExample = {
+  label: string;
+  form: HabitForm;
+};
 
 const iconMap = {
   "circle-check": CircleCheck,
@@ -113,9 +119,108 @@ const defaultForm: HabitForm = {
   reminder_time: "09:00"
 };
 
+const habitExamples: HabitExample[] = [
+  {
+    label: "Выпить воду утром",
+    form: {
+      title: "Выпить воду утром",
+      description: "Один стакан воды после пробуждения.",
+      color: "#0ea5e9",
+      icon: "droplet",
+      frequency_type: "daily",
+      target_count: 1,
+      period_interval: 1,
+      period_unit: "day",
+      weekdays: [],
+      reminder_enabled: true,
+      reminder_time: "09:00"
+    }
+  },
+  {
+    label: "Чтение 3 раза в неделю",
+    form: {
+      title: "Чтение",
+      description: "Хотя бы 20 минут без отвлечений.",
+      color: "#f97316",
+      icon: "book-open",
+      frequency_type: "weekly",
+      target_count: 3,
+      period_interval: 1,
+      period_unit: "week",
+      weekdays: [],
+      reminder_enabled: false,
+      reminder_time: "20:30"
+    }
+  },
+  {
+    label: "Разминка каждые 2 часа",
+    form: {
+      title: "Разминка",
+      description: "Встать, пройтись и размять спину.",
+      color: "#14b8a6",
+      icon: "dumbbell",
+      frequency_type: "hourly",
+      target_count: 1,
+      period_interval: 2,
+      period_unit: "hour",
+      weekdays: [],
+      reminder_enabled: true,
+      reminder_time: "10:00"
+    }
+  },
+  {
+    label: "Тренировка Пн/Ср/Пт",
+    form: {
+      title: "Тренировка",
+      description: "Силовая, пробежка или домашняя тренировка.",
+      color: "#84cc16",
+      icon: "dumbbell",
+      frequency_type: "custom",
+      target_count: 1,
+      period_interval: 1,
+      period_unit: "day",
+      weekdays: [1, 3, 5],
+      reminder_enabled: true,
+      reminder_time: "18:30"
+    }
+  },
+  {
+    label: "Сон до полуночи",
+    form: {
+      title: "Сон до полуночи",
+      description: "Лечь спать до 00:00.",
+      color: "#7c3aed",
+      icon: "moon",
+      frequency_type: "daily",
+      target_count: 1,
+      period_interval: 1,
+      period_unit: "day",
+      weekdays: [],
+      reminder_enabled: true,
+      reminder_time: "23:00"
+    }
+  }
+];
+
 function IconByName({ name, size = 18 }: { name: string; size?: number }) {
   const Icon = iconMap[name as keyof typeof iconMap] || CircleCheck;
   return <Icon size={size} strokeWidth={2} />;
+}
+
+function HelpLabel({ children, help }: { children: ReactNode; help: string }) {
+  return (
+    <span className="field-label">
+      <span>{children}</span>
+      <span className="help-popover">
+        <button className="help-button" type="button" aria-label={`Пояснение: ${String(children)}`}>
+          <CircleHelp size={14} />
+        </button>
+        <span className="help-bubble" role="tooltip">
+          {help}
+        </span>
+      </span>
+    </span>
+  );
 }
 
 function formatFrequency(habit: Habit) {
@@ -801,6 +906,30 @@ export function Dashboard() {
 
             {isEditorOpen && (
               <form className="editor-form" onSubmit={(event) => void submitHabit(event)}>
+                {!form.id && (
+                  <label className="example-picker">
+                    Примеры
+                    <select
+                      defaultValue=""
+                      onChange={(event) => {
+                        const example = habitExamples.find((item) => item.label === event.target.value);
+                        if (example) {
+                          setForm({ ...example.form });
+                        }
+                        event.currentTarget.value = "";
+                      }}
+                    >
+                      <option value="" disabled>
+                        Выбрать готовый пример
+                      </option>
+                      {habitExamples.map((example) => (
+                        <option value={example.label} key={example.label}>
+                          {example.label}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
 
             <label>
               Название
@@ -819,7 +948,9 @@ export function Dashboard() {
 
             <div className="control-row">
               <label>
-                Ритм
+                <HelpLabel help="Как считать привычку: по дням, по неделям, по часовым окнам или только в выбранные дни недели.">
+                  Ритм
+                </HelpLabel>
                 <select
                   value={form.frequency_type}
                   onChange={(event) => {
@@ -835,7 +966,9 @@ export function Dashboard() {
               </label>
 
               <label>
-                Цель
+                <HelpLabel help="Сколько отметок нужно набрать за один период, чтобы привычка считалась выполненной. Например, 3 раза за неделю.">
+                  Цель
+                </HelpLabel>
                 <input
                   type="number"
                   min={1}
@@ -847,7 +980,9 @@ export function Dashboard() {
 
             <div className="control-row">
               <label>
-                Интервал
+                <HelpLabel help="Через сколько единиц повторяется период. Например, 2 + час означает каждые 2 часа.">
+                  Интервал
+                </HelpLabel>
                 <input
                   type="number"
                   min={1}
@@ -856,7 +991,9 @@ export function Dashboard() {
                 />
               </label>
               <label>
-                Единица
+                <HelpLabel help="Единица для интервала: час, день или неделя. Вместе с интервалом задаёт окно для цели.">
+                  Единица
+                </HelpLabel>
                 <select value={form.period_unit} onChange={(event) => setForm({ ...form, period_unit: event.target.value as PeriodUnit })}>
                   <option value="hour">Час</option>
                   <option value="day">День</option>

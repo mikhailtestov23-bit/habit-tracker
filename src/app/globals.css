@@ -489,6 +489,84 @@ button:disabled {
   font-weight: 700;
 }
 
+.example-picker select {
+  border-color: rgba(20, 184, 166, 0.45);
+  background: #f7fffc;
+}
+
+.field-label {
+  display: inline-flex;
+  width: fit-content;
+  align-items: center;
+  gap: 6px;
+}
+
+.help-popover {
+  position: relative;
+  display: inline-flex;
+}
+
+.help-button {
+  display: inline-grid;
+  width: 20px;
+  min-height: 20px;
+  padding: 0;
+  place-items: center;
+  color: var(--muted);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+}
+
+.help-button:hover,
+.help-button:focus-visible {
+  color: var(--ink);
+  border-color: var(--teal);
+}
+
+.help-bubble {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 50%;
+  z-index: 40;
+  width: min(260px, 72vw);
+  padding: 9px 10px;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.35;
+  opacity: 0;
+  pointer-events: none;
+  transform: translateX(-50%) translateY(2px);
+  transition:
+    opacity 0.16s ease,
+    visibility 0.16s ease,
+    transform 0.16s ease;
+  visibility: hidden;
+}
+
+.help-bubble::after {
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  width: 10px;
+  height: 10px;
+  content: "";
+  background: var(--ink);
+  transform: translate(-50%, -5px) rotate(45deg);
+}
+
+.help-popover:hover .help-bubble,
+.help-button:focus + .help-bubble,
+.help-button:focus-visible + .help-bubble {
+  opacity: 1;
+  transform: translateX(-50%) translateY(0);
+  visibility: visible;
+}
+
 input,
 textarea,
 select {
@@ -1001,5 +1079,23 @@ select:focus {
   .button-row .secondary-button,
   .reminder-row > input {
     width: 100%;
+  }
+
+  .help-bubble {
+    right: -8px;
+    left: auto;
+    transform: translateY(2px);
+  }
+
+  .help-bubble::after {
+    right: 12px;
+    left: auto;
+    transform: translateY(-5px) rotate(45deg);
+  }
+
+  .help-popover:hover .help-bubble,
+  .help-button:focus + .help-bubble,
+  .help-button:focus-visible + .help-bubble {
+    transform: translateY(0);
   }
 }
