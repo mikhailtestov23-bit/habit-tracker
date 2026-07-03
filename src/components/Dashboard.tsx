@@ -310,6 +310,7 @@ export function Dashboard() {
         ? await authClient.auth.signUp({
             ...credentials,
             options: {
+              emailRedirectTo: window.location.origin,
               data: {
                 name: authName.trim() || authEmail.split("@")[0]
               }

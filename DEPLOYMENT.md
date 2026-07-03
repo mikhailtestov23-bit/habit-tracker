@@ -30,6 +30,17 @@
 
 В Supabase Authentication → Providers проверьте, что Email включен. Если включено подтверждение email, после регистрации пользователь должен подтвердить адрес в письме перед первым входом.
 
+В Supabase Authentication → URL Configuration укажите production-адрес приложения:
+
+- Site URL: `https://habit-tracker-ruby-zeta.vercel.app`
+- Redirect URLs: `https://habit-tracker-ruby-zeta.vercel.app/**`
+
+Для локальной разработки можно дополнительно добавить:
+
+- `http://localhost:3000/**`
+
+Приложение при регистрации также передает `emailRedirectTo` с текущим доменом, но Supabase должен заранее разрешать этот домен в Redirect URLs.
+
 ## 2. Получить Supabase keys
 
 В Supabase возьмите:

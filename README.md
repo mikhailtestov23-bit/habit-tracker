@@ -46,6 +46,8 @@ SUPABASE_SECRET_KEY=...
 
 В Supabase-режиме интерфейс требует вход. Клиент использует `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY`, а серверные API routes проверяют сессию и работают с данными текущего пользователя.
 
+Для писем подтверждения в Supabase Authentication → URL Configuration нужно поставить production-домен в Site URL и Redirect URLs. Иначе Supabase может отправлять пользователей на `localhost`.
+
 ## Формат CSV для импорта событий
 
 ```csv
