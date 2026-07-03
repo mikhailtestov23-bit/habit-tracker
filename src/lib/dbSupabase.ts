@@ -19,6 +19,27 @@ import { nowIso } from "@/lib/time";
 
 type DbRow = Record<string, unknown>;
 
+type HabitInput = {
+  id?: string;
+  title: string;
+  description?: string | null;
+  color: string;
+  icon: string;
+  frequency_type: FrequencyType;
+  target_count: number;
+  period_interval: number;
+  period_unit: PeriodUnit;
+  weekdays?: number[] | null;
+  starts_at?: string;
+  ends_at?: string | null;
+  reminder?: {
+    is_enabled: boolean;
+    time_of_day: string;
+    weekdays?: number[] | null;
+  };
+  sync_with_group?: boolean;
+};
+
 let supabaseClient: SupabaseClient | null = null;
 const bootstrappedUsers = new Set<string>();
 const bootstrapPromises = new Map<string, Promise<void>>();
@@ -113,6 +134,10 @@ function stableUuid(seed: string) {
   const hash = createHash("sha256").update(seed).digest("hex");
   const variant = ((Number.parseInt(hash[16], 16) & 0x3) | 0x8).toString(16);
   return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-${variant}${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
+}
+
+function sharedHabitKey(title: string) {
+  return title.trim().toLocaleLowerCase("ru-RU");
 }
 
 function normalizeWeekdays(value: unknown): number[] | null {
@@ -283,6 +308,7 @@ async function bootstrapSupabaseData(user = currentUser()) {
   await seedAchievements(client, timestamp);
 
   await cleanupStarterHabitDuplicates(client, user.id);
+  await syncExistingGroupHabitsToUser(client, user, timestamp);
 
   const { data: existingHabits, error: habitsError } = await client.from("habits").select("id").eq("user_id", user.id).limit(1);
   fail(habitsError);
@@ -375,6 +401,152 @@ async function cleanupStarterHabitDuplicates(client: SupabaseClient, userId: str
     if (deleteIds.length) {
       fail((await client.from("habits").delete().in("id", deleteIds)).error);
     }
+  }
+}
+
+function habitInsertPayload(userId: string, input: HabitInput, id: string, timestamp: string) {
+  return {
+    id,
+    user_id: userId,
+    title: input.title,
+    description: input.description ?? null,
+    color: input.color,
+    icon: input.icon,
+    frequency_type: input.frequency_type,
+    target_count: input.target_count,
+    period_interval: input.period_interval,
+    period_unit: input.period_unit,
+    weekdays: input.weekdays ?? null,
+    starts_at: input.starts_at || timestamp,
+    ends_at: input.ends_at ?? null,
+    is_active: true,
+    created_at: timestamp,
+    updated_at: timestamp
+  };
+}
+
+function habitUpdatePayload(input: HabitInput, timestamp: string) {
+  return {
+    title: input.title,
+    description: input.description ?? null,
+    color: input.color,
+    icon: input.icon,
+    frequency_type: input.frequency_type,
+    target_count: input.target_count,
+    period_interval: input.period_interval,
+    period_unit: input.period_unit,
+    weekdays: input.weekdays ?? null,
+    ends_at: input.ends_at ?? null,
+    is_active: true,
+    updated_at: timestamp
+  };
+}
+
+async function visibleUsersForSharing(client: SupabaseClient, currentUserIdValue: string) {
+  const { data, error } = await client.from("users").select("*").order("created_at", { ascending: true });
+  fail(error);
+
+  let users = (data || []).map(mapUser);
+  if (currentUserIdValue !== LOCAL_USER_ID) {
+    users = users.filter((user) => user.id !== LOCAL_USER_ID);
+  }
+
+  return users;
+}
+
+async function syncHabitToGroup(input: HabitInput, sourceUserId: string, timestamp: string) {
+  const titleKey = sharedHabitKey(input.title);
+  if (!titleKey) {
+    return;
+  }
+
+  const client = supabase();
+  const users = await visibleUsersForSharing(client, sourceUserId);
+  const targetUsers = users.filter((user) => user.id !== sourceUserId);
+
+  if (!targetUsers.length) {
+    return;
+  }
+
+  const targetUserIds = targetUsers.map((user) => user.id);
+  const { data: existingRows, error: existingError } = await client.from("habits").select("*").in("user_id", targetUserIds);
+  fail(existingError);
+
+  const existingHabits = (existingRows || []).map(mapHabit);
+
+  await Promise.all(
+    targetUsers.map(async (user) => {
+      const existing = existingHabits.find((habit) => habit.user_id === user.id && sharedHabitKey(habit.title) === titleKey);
+
+      if (existing) {
+        fail(
+          (
+            await client
+              .from("habits")
+              .update(habitUpdatePayload(input, timestamp))
+              .eq("id", existing.id)
+              .eq("user_id", user.id)
+          ).error
+        );
+        return;
+      }
+
+      const id = stableUuid(`${user.id}:shared-habit:${titleKey}`);
+      fail((await client.from("habits").insert(habitInsertPayload(user.id, input, id, timestamp))).error);
+    })
+  );
+}
+
+async function syncExistingGroupHabitsToUser(client: SupabaseClient, user: ReturnType<typeof currentUser>, timestamp: string) {
+  const users = await visibleUsersForSharing(client, user.id);
+  const otherUserIds = users.map((item) => item.id).filter((id) => id !== user.id);
+
+  if (!otherUserIds.length) {
+    return;
+  }
+
+  const [{ data: currentRows, error: currentError }, { data: templateRows, error: templateError }] = await Promise.all([
+    client.from("habits").select("*").eq("user_id", user.id),
+    client.from("habits").select("*").in("user_id", otherUserIds).eq("is_active", true).order("created_at", { ascending: false })
+  ]);
+  fail(currentError);
+  fail(templateError);
+
+  const currentKeys = new Set((currentRows || []).map((row) => sharedHabitKey(String(row.title))));
+  const templates = new Map<string, Habit>();
+
+  for (const habit of (templateRows || []).map(mapHabit)) {
+    const key = sharedHabitKey(habit.title);
+    if (key && !templates.has(key)) {
+      templates.set(key, habit);
+    }
+  }
+
+  const inserts = [...templates.entries()]
+    .filter(([key]) => !currentKeys.has(key))
+    .map(([key, habit]) =>
+      habitInsertPayload(
+        user.id,
+        {
+          title: habit.title,
+          description: habit.description,
+          color: habit.color,
+          icon: habit.icon,
+          frequency_type: habit.frequency_type,
+          target_count: habit.target_count,
+          period_interval: habit.period_interval,
+          period_unit: habit.period_unit,
+          weekdays: habit.weekdays,
+          starts_at: timestamp,
+          ends_at: habit.ends_at
+        },
+        stableUuid(`${user.id}:shared-habit:${key}`),
+        timestamp
+      )
+    );
+
+  if (inserts.length) {
+    fail((await client.from("habits").insert(inserts)).error);
   }
 }
 
@@ -505,52 +677,13 @@ export async function getSocialSnapshot(): Promise<SocialSnapshot> {
   };
 }
 
-export async function createHabit(input: {
-  id?: string;
-  title: string;
-  description?: string | null;
-  color: string;
-  icon: string;
-  frequency_type: FrequencyType;
-  target_count: number;
-  period_interval: number;
-  period_unit: PeriodUnit;
-  weekdays?: number[] | null;
-  starts_at?: string;
-  ends_at?: string | null;
-  reminder?: {
-    is_enabled: boolean;
-    time_of_day: string;
-    weekdays?: number[] | null;
-  };
-}) {
+export async function createHabit(input: HabitInput) {
   await ensureSupabaseBootstrap();
   const timestamp = nowIso();
   const id = input.id || crypto.randomUUID();
   const userId = currentUserId();
 
-  fail(
-    (
-      await supabase().from("habits").insert({
-        id,
-        user_id: userId,
-        title: input.title,
-        description: input.description ?? null,
-        color: input.color,
-        icon: input.icon,
-        frequency_type: input.frequency_type,
-        target_count: input.target_count,
-        period_interval: input.period_interval,
-        period_unit: input.period_unit,
-        weekdays: input.weekdays ?? null,
-        starts_at: input.starts_at || timestamp,
-        ends_at: input.ends_at ?? null,
-        is_active: true,
-        created_at: timestamp,
-        updated_at: timestamp
-      })
-    ).error
-  );
+  fail((await supabase().from("habits").insert(habitInsertPayload(userId, input, id, timestamp))).error);
 
   if (input.reminder?.is_enabled) {
     await upsertReminder(id, {
@@ -558,6 +691,10 @@ export async function createHabit(input: {
       time_of_day: input.reminder.time_of_day,
       weekdays: input.reminder.weekdays ?? input.weekdays ?? null
     });
+  }
+
+  if (input.sync_with_group !== false) {
+    await syncHabitToGroup(input, userId, timestamp);
   }
 
   return id;
@@ -815,7 +952,8 @@ export async function importData(payload: ImportPayload, dryRun = false) {
           period_unit: habit.period_unit || "day",
           weekdays: habit.weekdays ?? null,
           starts_at: habit.starts_at || nowIso(),
-          ends_at: habit.ends_at ?? null
+          ends_at: habit.ends_at ?? null,
+          sync_with_group: false
         });
       }
     }

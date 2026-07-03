@@ -186,6 +186,7 @@ export function Dashboard() {
   const [authPassword, setAuthPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
   const [form, setForm] = useState<HabitForm>(defaultForm);
+  const [editorOpen, setEditorOpen] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<"json" | "csv">("json");
   const [importText, setImportText] = useState("");
@@ -290,6 +291,7 @@ export function Dashboard() {
   const selectedLeaderboard = selectedHabit
     ? state?.social.habit_leaderboards.find((leaderboard) => leaderboard.habit_key === getHabitKey(selectedHabit.habit.title))
     : null;
+  const isEditorOpen = editorOpen || Boolean(form.id);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -396,6 +398,7 @@ export function Dashboard() {
 
     setState((await response.json()) as TrackerState);
     setForm(defaultForm);
+    setEditorOpen(false);
     setBusy(false);
   }
 
@@ -592,6 +595,60 @@ export function Dashboard() {
         <Metric label="Участники" value={state.social.members.length} />
       </section>
 
+      <section className="social-grid" aria-label="Командный прогресс">
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>Общая лига</h2>
+            <Users size={18} />
+          </div>
+          <div className="member-list">
+            {state.social.members.map((member, index) => (
+              <div className={clsx("member-row", member.user_id === state.user.id && "current")} key={member.user_id}>
+                <span className="rank">{index + 1}</span>
+                <div>
+                  <strong>{member.name}</strong>
+                  <span>
+                    {member.completed_now}/{member.active_habits} сегодня · {member.best_streak} streak
+                  </span>
+                </div>
+                <strong>{member.score}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>Лидерборды</h2>
+            <Medal size={18} />
+          </div>
+          <div className="leaderboard-list">
+            {state.social.habit_leaderboards.length ? (
+              state.social.habit_leaderboards.map((leaderboard) => (
+                <div className="leaderboard-card" key={leaderboard.habit_key}>
+                  <div className="leaderboard-title">
+                    <strong>{leaderboard.title}</strong>
+                    <span>{leaderboard.entries.length} участн.</span>
+                  </div>
+                  {leaderboard.entries.slice(0, 4).map((entry, index) => (
+                    <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
+                      <span className="rank">{index + 1}</span>
+                      <span className="leaderboard-user">{entry.name}</span>
+                      <span>
+                        {entry.progress}/{entry.target}
+                      </span>
+                      <span>{entry.streak}</span>
+                    </div>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <p className="empty">Лидерборды появятся после первой привычки.</p>
+            )}
+          </div>
+        </article>
+      </section>
+
       <div className="workspace-grid">
         <section className="habit-list" aria-label="Привычки">
           {state.habits.map((item) => (
@@ -621,7 +678,15 @@ export function Dashboard() {
                 <span style={{ width: `${item.percentage}%` }} />
               </div>
               <div className="habit-actions">
-                <button className="icon-button compact" type="button" onClick={() => setForm(formFromHabit(item))} title="Редактировать">
+                <button
+                  className="icon-button compact"
+                  type="button"
+                  onClick={() => {
+                    setForm(formFromHabit(item));
+                    setEditorOpen(true);
+                  }}
+                  title="Редактировать"
+                >
                   <Pencil size={16} />
                 </button>
                 <button className="icon-button compact danger" type="button" onClick={() => void archiveHabit(item.habit.id)} title="Архивировать">
@@ -637,15 +702,29 @@ export function Dashboard() {
         </section>
 
         <aside className="side-panel">
-          <form className="editor" onSubmit={(event) => void submitHabit(event)}>
-            <div className="panel-heading">
-              <h2>{form.id ? "Привычка" : "Новая привычка"}</h2>
-              {form.id && (
-                <button className="icon-button compact" type="button" onClick={() => setForm(defaultForm)} title="Сбросить форму">
-                  <X size={16} />
-                </button>
-              )}
-            </div>
+          <section className={clsx("editor-shell", isEditorOpen && "open")}>
+            <button
+              className="editor-toggle"
+              type="button"
+              aria-expanded={isEditorOpen}
+              onClick={() => {
+                if (isEditorOpen) {
+                  setForm(defaultForm);
+                  setEditorOpen(false);
+                } else {
+                  setEditorOpen(true);
+                }
+              }}
+            >
+              <span>
+                <strong>{form.id ? "Редактировать привычку" : "Новая привычка"}</strong>
+                <span>{isEditorOpen ? "Настрой ритм, цель и напоминание" : "Раскрыть форму добавления"}</span>
+              </span>
+              <span className="editor-toggle-icon">{isEditorOpen ? <X size={16} /> : <Plus size={16} />}</span>
+            </button>
+
+            {isEditorOpen && (
+              <form className="editor-form" onSubmit={(event) => void submitHabit(event)}>
 
             <label>
               Название
@@ -770,63 +849,11 @@ export function Dashboard() {
               {form.id ? <Save size={18} /> : <Plus size={18} />}
               {form.id ? "Сохранить" : "Добавить"}
             </button>
-          </form>
+              </form>
+            )}
+          </section>
         </aside>
       </div>
-
-      <section className="social-grid" aria-label="Командный прогресс">
-        <article className="detail-panel">
-          <div className="panel-heading">
-            <h2>Общая лига</h2>
-            <Users size={18} />
-          </div>
-          <div className="member-list">
-            {state.social.members.map((member, index) => (
-              <div className={clsx("member-row", member.user_id === state.user.id && "current")} key={member.user_id}>
-                <span className="rank">{index + 1}</span>
-                <div>
-                  <strong>{member.name}</strong>
-                  <span>
-                    {member.completed_now}/{member.active_habits} сегодня · {member.best_streak} streak
-                  </span>
-                </div>
-                <strong>{member.score}</strong>
-              </div>
-            ))}
-          </div>
-        </article>
-
-        <article className="detail-panel">
-          <div className="panel-heading">
-            <h2>Лидерборды</h2>
-            <Medal size={18} />
-          </div>
-          <div className="leaderboard-list">
-            {state.social.habit_leaderboards.length ? (
-              state.social.habit_leaderboards.map((leaderboard) => (
-                <div className="leaderboard-card" key={leaderboard.habit_key}>
-                  <div className="leaderboard-title">
-                    <strong>{leaderboard.title}</strong>
-                    <span>{leaderboard.entries.length} участн.</span>
-                  </div>
-                  {leaderboard.entries.slice(0, 4).map((entry, index) => (
-                    <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
-                      <span className="rank">{index + 1}</span>
-                      <span className="leaderboard-user">{entry.name}</span>
-                      <span>
-                        {entry.progress}/{entry.target}
-                      </span>
-                      <span>{entry.streak}</span>
-                    </div>
-                  ))}
-                </div>
-              ))
-            ) : (
-              <p className="empty">Лидерборды появятся после первой привычки.</p>
-            )}
-          </div>
-        </article>
-      </section>
 
       <section className="detail-grid">
         <article className="detail-panel">
