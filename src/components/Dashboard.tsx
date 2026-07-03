@@ -330,6 +330,24 @@ export function Dashboard() {
     setBusy(false);
   }
 
+  async function resendConfirmation() {
+    if (!authClient || !authEmail.trim()) {
+      return;
+    }
+
+    setBusy(true);
+    const { error } = await authClient.auth.resend({
+      type: "signup",
+      email: authEmail.trim(),
+      options: {
+        emailRedirectTo: window.location.origin
+      }
+    });
+
+    setAuthMessage(error ? error.message : "Новое письмо подтверждения отправлено.");
+    setBusy(false);
+  }
+
   async function signOut() {
     setBusy(true);
     await authClient?.auth.signOut();
@@ -521,6 +539,7 @@ export function Dashboard() {
         onNameChange={setAuthName}
         onEmailChange={setAuthEmail}
         onPasswordChange={setAuthPassword}
+        onResend={() => void resendConfirmation()}
         onSubmit={(event) => void submitAuth(event)}
       />
     );
@@ -956,6 +975,7 @@ function AuthScreen({
   onNameChange,
   onEmailChange,
   onPasswordChange,
+  onResend,
   onSubmit
 }: {
   mode: AuthMode;
@@ -968,6 +988,7 @@ function AuthScreen({
   onNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
   onPasswordChange: (value: string) => void;
+  onResend: () => void;
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const isSignUp = mode === "sign-up";
@@ -1025,6 +1046,12 @@ function AuthScreen({
             {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
             {isSignUp ? "Зарегистрироваться" : "Войти"}
           </button>
+          {isSignUp && (
+            <button className="secondary-button auth-resend" type="button" disabled={busy || !email.trim()} onClick={onResend}>
+              <Mail size={16} />
+              Отправить письмо еще раз
+            </button>
+          )}
         </form>
       </section>
     </main>
