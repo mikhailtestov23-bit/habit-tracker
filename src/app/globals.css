@@ -425,6 +425,10 @@ button:disabled {
   overflow: hidden;
 }
 
+.editor-shell.open {
+  overflow: visible;
+}
+
 .editor-toggle {
   display: flex;
   width: 100%;
@@ -565,6 +569,40 @@ button:disabled {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
+}
+
+.control-row label:first-child .help-bubble {
+  left: -10px;
+  transform: translateY(2px);
+}
+
+.control-row label:first-child .help-bubble::after {
+  left: 20px;
+  transform: translateY(-5px) rotate(45deg);
+}
+
+.control-row label:first-child .help-popover:hover .help-bubble,
+.control-row label:first-child .help-button:focus + .help-bubble,
+.control-row label:first-child .help-button:focus-visible + .help-bubble {
+  transform: translateY(0);
+}
+
+.control-row label:last-child .help-bubble {
+  right: -10px;
+  left: auto;
+  transform: translateY(2px);
+}
+
+.control-row label:last-child .help-bubble::after {
+  right: 20px;
+  left: auto;
+  transform: translateY(-5px) rotate(45deg);
+}
+
+.control-row label:last-child .help-popover:hover .help-bubble,
+.control-row label:last-child .help-button:focus + .help-bubble,
+.control-row label:last-child .help-button:focus-visible + .help-bubble {
+  transform: translateY(0);
 }
 
 input,
