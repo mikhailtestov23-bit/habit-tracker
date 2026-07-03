@@ -121,9 +121,9 @@ const defaultForm: HabitForm = {
 
 const habitExamples: HabitExample[] = [
   {
-    label: "Выпить воду утром",
+    label: "Выпить воду 1 раз в день",
     form: {
-      title: "Выпить воду утром",
+      title: "Выпить воду",
       description: "Один стакан воды после пробуждения.",
       color: "#0ea5e9",
       icon: "droplet",
@@ -137,9 +137,9 @@ const habitExamples: HabitExample[] = [
     }
   },
   {
-    label: "Чтение 3 раза в неделю",
+    label: "Читать 3 раза в неделю",
     form: {
-      title: "Чтение",
+      title: "Читать",
       description: "Хотя бы 20 минут без отвлечений.",
       color: "#f97316",
       icon: "book-open",
@@ -153,9 +153,9 @@ const habitExamples: HabitExample[] = [
     }
   },
   {
-    label: "Разминка каждые 2 часа",
+    label: "Делать разминку каждые 2 часа",
     form: {
-      title: "Разминка",
+      title: "Делать разминку",
       description: "Встать, пройтись и размять спину.",
       color: "#14b8a6",
       icon: "dumbbell",
@@ -169,7 +169,7 @@ const habitExamples: HabitExample[] = [
     }
   },
   {
-    label: "Тренировка Пн/Ср/Пт",
+    label: "Тренировка по Пн/Ср/Пт",
     form: {
       title: "Тренировка",
       description: "Силовая, пробежка или домашняя тренировка.",
@@ -202,12 +202,21 @@ const habitExamples: HabitExample[] = [
   }
 ];
 
+const habitExampleHelp = (
+  <span className="help-example-list">
+    <span>Выпить воду 1 раз в день: Ритм - По дням, Цель - 1, Интервал - 1, Единица - День.</span>
+    <span>Читать 3 раза в неделю: Ритм - По неделям, Цель - 3, Интервал - 1, Единица - Неделя.</span>
+    <span>Делать разминку каждые 2 часа: Ритм - По часам, Цель - 1, Интервал - 2, Единица - Час.</span>
+    <span>Тренировка по Пн/Ср/Пт: Ритм - Дни недели, выбрать Пн, Ср, Пт, Цель - 1.</span>
+  </span>
+);
+
 function IconByName({ name, size = 18 }: { name: string; size?: number }) {
   const Icon = iconMap[name as keyof typeof iconMap] || CircleCheck;
   return <Icon size={size} strokeWidth={2} />;
 }
 
-function HelpLabel({ children, help }: { children: ReactNode; help: string }) {
+function HelpLabel({ children, help }: { children: ReactNode; help: ReactNode }) {
   return (
     <span className="field-label">
       <span>{children}</span>
@@ -908,7 +917,7 @@ export function Dashboard() {
               <form className="editor-form" onSubmit={(event) => void submitHabit(event)}>
                 {!form.id && (
                   <label className="example-picker">
-                    Примеры
+                    <HelpLabel help={habitExampleHelp}>Примеры</HelpLabel>
                     <select
                       defaultValue=""
                       onChange={(event) => {

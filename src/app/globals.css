@@ -498,6 +498,23 @@ button:disabled {
   background: #f7fffc;
 }
 
+.example-picker .help-bubble {
+  left: 0;
+  width: min(360px, calc(100vw - 112px));
+  transform: translateY(2px);
+}
+
+.example-picker .help-bubble::after {
+  left: 12px;
+  transform: translateY(-5px) rotate(45deg);
+}
+
+.example-picker .help-popover:hover .help-bubble,
+.example-picker .help-button:focus + .help-bubble,
+.example-picker .help-button:focus-visible + .help-bubble {
+  transform: translateY(0);
+}
+
 .field-label {
   display: inline-flex;
   width: fit-content;
@@ -569,6 +586,15 @@ button:disabled {
   opacity: 1;
   transform: translateX(-50%) translateY(0);
   visibility: visible;
+}
+
+.help-example-list {
+  display: grid;
+  gap: 7px;
+}
+
+.help-example-list span {
+  display: block;
 }
 
 .control-row label:first-child .help-bubble {
@@ -1119,21 +1145,37 @@ select:focus {
     width: 100%;
   }
 
-  .help-bubble {
-    right: -8px;
-    left: auto;
+  .help-bubble,
+  .control-row label:first-child .help-bubble,
+  .control-row label:last-child .help-bubble,
+  .example-picker .help-bubble {
+    right: auto;
+    left: -8px;
+    width: min(300px, calc(100vw - 88px));
     transform: translateY(2px);
   }
 
-  .help-bubble::after {
-    right: 12px;
-    left: auto;
+  .help-bubble::after,
+  .control-row label:first-child .help-bubble::after,
+  .control-row label:last-child .help-bubble::after,
+  .example-picker .help-bubble::after {
+    right: auto;
+    left: 18px;
     transform: translateY(-5px) rotate(45deg);
   }
 
   .help-popover:hover .help-bubble,
   .help-button:focus + .help-bubble,
-  .help-button:focus-visible + .help-bubble {
+  .help-button:focus-visible + .help-bubble,
+  .control-row label:first-child .help-popover:hover .help-bubble,
+  .control-row label:first-child .help-button:focus + .help-bubble,
+  .control-row label:first-child .help-button:focus-visible + .help-bubble,
+  .control-row label:last-child .help-popover:hover .help-bubble,
+  .control-row label:last-child .help-button:focus + .help-bubble,
+  .control-row label:last-child .help-button:focus-visible + .help-bubble,
+  .example-picker .help-popover:hover .help-bubble,
+  .example-picker .help-button:focus + .help-bubble,
+  .example-picker .help-button:focus-visible + .help-bubble {
     transform: translateY(0);
   }
 }
