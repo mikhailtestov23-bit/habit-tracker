@@ -1,0 +1,705 @@
+:root {
+  --background: #f7f4ee;
+  --surface: #fffdfa;
+  --surface-strong: #ffffff;
+  --ink: #171717;
+  --muted: #6b655e;
+  --line: #ded8cf;
+  --blue: #0ea5e9;
+  --teal: #14b8a6;
+  --rose: #e11d48;
+  --amber: #f59e0b;
+  --green: #84cc16;
+  --shadow: 0 18px 45px rgba(34, 31, 27, 0.08);
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html {
+  background: var(--background);
+}
+
+body {
+  margin: 0;
+  color: var(--ink);
+  background: var(--background);
+  font-family:
+    Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+}
+
+button,
+input,
+textarea,
+select {
+  font: inherit;
+}
+
+button {
+  cursor: pointer;
+}
+
+button:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.app-shell {
+  width: min(1460px, 100%);
+  min-height: 100svh;
+  margin: 0 auto;
+  padding: 28px;
+}
+
+.loading-shell {
+  display: grid;
+  place-items: center;
+}
+
+.loader {
+  width: 44px;
+  height: 44px;
+  border: 4px solid #ded8cf;
+  border-top-color: var(--teal);
+  border-radius: 999px;
+  animation: spin 0.85s linear infinite;
+}
+
+.topbar,
+.panel-heading,
+.top-actions,
+.habit-actions,
+.control-row,
+.button-row,
+.panel-actions,
+.reminder-row {
+  display: flex;
+  align-items: center;
+}
+
+.topbar {
+  justify-content: space-between;
+  gap: 18px;
+  margin-bottom: 18px;
+}
+
+.topbar h1,
+.panel-heading h2,
+.achievement-modal h2 {
+  margin: 0;
+  letter-spacing: 0;
+}
+
+.topbar h1 {
+  font-size: 42px;
+  line-height: 1;
+}
+
+.eyebrow {
+  margin: 0 0 6px;
+  color: var(--teal);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.top-actions,
+.panel-actions {
+  gap: 8px;
+}
+
+.icon-button {
+  display: inline-grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 8px 20px rgba(34, 31, 27, 0.05);
+}
+
+.icon-button:hover {
+  border-color: #bbb2a6;
+  transform: translateY(-1px);
+}
+
+.icon-button.compact {
+  width: 34px;
+  height: 34px;
+  box-shadow: none;
+}
+
+.icon-button.danger {
+  color: var(--rose);
+}
+
+.notice {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  color: #115e59;
+  background: #ccfbf1;
+  border: 1px solid #99f6e4;
+  border-radius: 8px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.metric-card,
+.habit-card,
+.editor,
+.detail-panel {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.metric-card {
+  min-height: 82px;
+  padding: 16px;
+}
+
+.metric-card span,
+.subtle,
+.habit-meta,
+.achievement-card span,
+.progress-row,
+.empty {
+  color: var(--muted);
+}
+
+.metric-card strong {
+  display: block;
+  margin-top: 6px;
+  font-size: 28px;
+  line-height: 1;
+}
+
+.workspace-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 380px;
+  gap: 18px;
+  align-items: start;
+}
+
+.habit-list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.habit-card {
+  position: relative;
+  padding: 14px;
+  overflow: hidden;
+}
+
+.habit-card::before {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 5px;
+  content: "";
+  background: var(--habit-color);
+}
+
+.habit-card.selected {
+  border-color: color-mix(in srgb, var(--habit-color) 50%, var(--line));
+}
+
+.habit-card.complete {
+  background: linear-gradient(180deg, #ffffff 0%, color-mix(in srgb, var(--habit-color) 10%, #ffffff) 100%);
+}
+
+.habit-main {
+  display: grid;
+  width: 100%;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 12px;
+  padding: 0;
+  text-align: left;
+  background: transparent;
+  border: 0;
+}
+
+.habit-icon,
+.achievement-icon,
+.modal-medal {
+  display: grid;
+  place-items: center;
+  color: #fff;
+  background: var(--habit-color, var(--teal));
+  border-radius: 8px;
+}
+
+.habit-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.habit-copy {
+  min-width: 0;
+}
+
+.habit-title {
+  display: block;
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.habit-meta {
+  display: block;
+  margin-top: 3px;
+  font-size: 13px;
+}
+
+.progress-row {
+  justify-content: space-between;
+  margin: 14px 0 8px;
+  font-size: 13px;
+}
+
+.progress-track {
+  width: 100%;
+  height: 9px;
+  overflow: hidden;
+  background: #ece6dc;
+  border-radius: 8px;
+}
+
+.progress-track span {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--habit-color);
+  border-radius: inherit;
+  transition: width 180ms ease;
+}
+
+.habit-actions {
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.check-button,
+.primary-button,
+.secondary-button {
+  display: inline-flex;
+  min-height: 38px;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 14px;
+  font-weight: 800;
+  border-radius: 8px;
+}
+
+.check-button,
+.primary-button {
+  color: #fff;
+  background: var(--ink);
+  border: 1px solid var(--ink);
+}
+
+.secondary-button {
+  color: var(--ink);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+}
+
+.side-panel {
+  position: sticky;
+  top: 18px;
+}
+
+.editor,
+.detail-panel {
+  padding: 16px;
+}
+
+.panel-heading {
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 14px;
+}
+
+.panel-heading h2 {
+  font-size: 19px;
+}
+
+.editor label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+input,
+textarea,
+select {
+  width: 100%;
+  min-height: 40px;
+  padding: 9px 10px;
+  color: var(--ink);
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  outline: 0;
+}
+
+textarea {
+  min-height: 78px;
+  resize: vertical;
+}
+
+input:focus,
+textarea:focus,
+select:focus {
+  border-color: var(--teal);
+  box-shadow: 0 0 0 3px rgba(20, 184, 166, 0.12);
+}
+
+.control-row {
+  gap: 10px;
+}
+
+.control-row label {
+  flex: 1;
+}
+
+.weekday-picker,
+.swatches,
+.segmented {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.weekday-picker button,
+.segmented button {
+  min-width: 40px;
+  min-height: 34px;
+  padding: 0 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.weekday-picker button.active,
+.segmented button.active {
+  color: #fff;
+  background: var(--ink);
+  border-color: var(--ink);
+}
+
+.swatches button {
+  width: 32px;
+  height: 32px;
+  border: 2px solid transparent;
+  border-radius: 8px;
+}
+
+.swatches button.active {
+  border-color: var(--ink);
+  outline: 2px solid #fff;
+}
+
+.reminder-row {
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.reminder-row .checkbox-label {
+  display: flex;
+  min-height: 40px;
+  flex: 1;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  margin: 0;
+}
+
+.checkbox-label input {
+  width: 18px;
+  min-height: 18px;
+}
+
+.reminder-row > input {
+  width: 130px;
+}
+
+.primary-button {
+  width: 100%;
+}
+
+.detail-grid {
+  display: grid;
+  grid-template-columns: 1fr 1.1fr 1fr;
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.heatmap {
+  display: grid;
+  grid-template-columns: repeat(21, minmax(0, 1fr));
+  gap: 5px;
+  margin-bottom: 14px;
+}
+
+.heatmap span {
+  aspect-ratio: 1;
+  min-width: 0;
+  background: #ece6dc;
+  border-radius: 4px;
+}
+
+.heatmap span.filled {
+  background: color-mix(in srgb, var(--habit-color) 45%, #ece6dc);
+}
+
+.heatmap span.complete {
+  background: var(--habit-color);
+}
+
+.event-list {
+  display: grid;
+  gap: 8px;
+  max-height: 260px;
+  overflow: auto;
+}
+
+.event-row {
+  display: grid;
+  grid-template-columns: 1fr auto 34px;
+  gap: 8px;
+  align-items: center;
+  min-height: 38px;
+  padding: 0 0 0 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.achievement-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.achievement-card {
+  display: grid;
+  grid-template-columns: 42px minmax(0, 1fr);
+  gap: 10px;
+  min-height: 76px;
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  opacity: 0.5;
+}
+
+.achievement-card.unlocked {
+  opacity: 1;
+}
+
+.achievement-card.common .achievement-icon {
+  background: var(--teal);
+}
+
+.achievement-card.rare .achievement-icon {
+  background: var(--blue);
+}
+
+.achievement-card.epic .achievement-icon {
+  background: #7c3aed;
+}
+
+.achievement-card.legendary .achievement-icon {
+  background: var(--amber);
+}
+
+.achievement-icon {
+  width: 42px;
+  height: 42px;
+}
+
+.achievement-card strong,
+.achievement-card span {
+  display: block;
+}
+
+.achievement-card strong {
+  overflow-wrap: anywhere;
+}
+
+.achievement-card span {
+  margin-top: 3px;
+  font-size: 12px;
+  line-height: 1.35;
+}
+
+.import-panel textarea {
+  font-family: "SFMono-Regular", Consolas, monospace;
+  font-size: 12px;
+}
+
+.import-summary {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 10px 0;
+}
+
+.import-summary span,
+.import-summary strong {
+  padding: 5px 8px;
+  font-size: 12px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.button-row {
+  gap: 8px;
+}
+
+.button-row .primary-button,
+.button-row .secondary-button {
+  width: 50%;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(23, 23, 23, 0.38);
+  backdrop-filter: blur(8px);
+}
+
+.achievement-modal {
+  position: relative;
+  width: min(420px, 100%);
+  padding: 28px;
+  text-align: center;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: 0 28px 80px rgba(23, 23, 23, 0.25);
+  animation: pop 220ms ease both;
+}
+
+.achievement-modal p:last-child {
+  margin-bottom: 0;
+  color: var(--muted);
+}
+
+.modal-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+}
+
+.modal-medal {
+  width: 78px;
+  height: 78px;
+  margin: 0 auto 16px;
+  background: var(--teal);
+}
+
+.achievement-modal.rare .modal-medal {
+  background: var(--blue);
+}
+
+.achievement-modal.epic .modal-medal {
+  background: #7c3aed;
+}
+
+.achievement-modal.legendary .modal-medal {
+  background: var(--amber);
+}
+
+.empty {
+  margin: 0;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@keyframes pop {
+  from {
+    opacity: 0;
+    transform: translateY(12px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@media (max-width: 1180px) {
+  .workspace-grid,
+  .detail-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .side-panel {
+    position: static;
+  }
+}
+
+@media (max-width: 760px) {
+  .app-shell {
+    padding: 16px;
+  }
+
+  .topbar h1 {
+    font-size: 34px;
+  }
+
+  .metrics-grid,
+  .habit-list,
+  .achievement-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .habit-actions {
+    justify-content: stretch;
+  }
+
+  .check-button {
+    flex: 1;
+  }
+
+  .control-row,
+  .reminder-row,
+  .button-row {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .button-row .primary-button,
+  .button-row .secondary-button,
+  .reminder-row > input {
+    width: 100%;
+  }
+}

@@ -1,0 +1,654 @@
+"use client";
+
+import {
+  Award,
+  BadgeCheck,
+  Bell,
+  BookOpen,
+  Check,
+  CircleCheck,
+  Crown,
+  Download,
+  Droplet,
+  Dumbbell,
+  Flame,
+  Import,
+  Leaf,
+  Moon,
+  Pencil,
+  Plus,
+  RotateCcw,
+  Save,
+  Sparkles,
+  Trash2,
+  Trophy,
+  Upload,
+  X
+} from "lucide-react";
+import type { CSSProperties, FormEvent } from "react";
+import { useEffect, useMemo, useState } from "react";
+import clsx from "clsx";
+import { FrequencyType, Habit, HabitProgress, PeriodUnit, TrackerState, UnlockedAchievement } from "@/lib/types";
+
+type HabitForm = {
+  id?: string;
+  title: string;
+  description: string;
+  color: string;
+  icon: string;
+  frequency_type: FrequencyType;
+  target_count: number;
+  period_interval: number;
+  period_unit: PeriodUnit;
+  weekdays: number[];
+  reminder_enabled: boolean;
+  reminder_time: string;
+};
+
+type ImportPreview = {
+  habitsCreated: number;
+  eventsCreated: number;
+  remindersCreated: number;
+  errors: string[];
+};
+
+const iconMap = {
+  "circle-check": CircleCheck,
+  droplet: Droplet,
+  "book-open": BookOpen,
+  dumbbell: Dumbbell,
+  leaf: Leaf,
+  moon: Moon,
+  flame: Flame,
+  sparkles: Sparkles,
+  trophy: Trophy,
+  crown: Crown,
+  rotate: RotateCcw,
+  badge: BadgeCheck
+};
+
+const iconOptions = [
+  ["circle-check", "Общее"],
+  ["droplet", "Вода"],
+  ["book-open", "Чтение"],
+  ["dumbbell", "Спорт"],
+  ["leaf", "Здоровье"],
+  ["moon", "Сон"],
+  ["flame", "Фокус"]
+];
+
+const colorOptions = ["#0ea5e9", "#14b8a6", "#f97316", "#e11d48", "#7c3aed", "#84cc16", "#111827"];
+const weekdays = [
+  [1, "Пн"],
+  [2, "Вт"],
+  [3, "Ср"],
+  [4, "Чт"],
+  [5, "Пт"],
+  [6, "Сб"],
+  [7, "Вс"]
+] as const;
+
+const defaultForm: HabitForm = {
+  title: "",
+  description: "",
+  color: "#14b8a6",
+  icon: "circle-check",
+  frequency_type: "daily",
+  target_count: 1,
+  period_interval: 1,
+  period_unit: "day",
+  weekdays: [],
+  reminder_enabled: false,
+  reminder_time: "09:00"
+};
+
+function IconByName({ name, size = 18 }: { name: string; size?: number }) {
+  const Icon = iconMap[name as keyof typeof iconMap] || CircleCheck;
+  return <Icon size={size} strokeWidth={2} />;
+}
+
+function formatFrequency(habit: Habit) {
+  if (habit.frequency_type === "hourly") {
+    return `каждые ${habit.period_interval} ч.`;
+  }
+
+  if (habit.frequency_type === "weekly") {
+    return `${habit.target_count} в неделю`;
+  }
+
+  if (habit.frequency_type === "custom" && habit.weekdays?.length) {
+    return habit.weekdays.map((day) => weekdays.find(([value]) => value === day)?.[1]).join(", ");
+  }
+
+  return habit.target_count > 1 ? `${habit.target_count} в день` : "ежедневно";
+}
+
+function formatDateTime(value: string) {
+  return new Intl.DateTimeFormat("ru-RU", {
+    day: "2-digit",
+    month: "short",
+    hour: "2-digit",
+    minute: "2-digit"
+  }).format(new Date(value));
+}
+
+function getPeriodUnit(frequency: FrequencyType): PeriodUnit {
+  if (frequency === "hourly") {
+    return "hour";
+  }
+  if (frequency === "weekly") {
+    return "week";
+  }
+  return "day";
+}
+
+function formFromHabit(progress: HabitProgress): HabitForm {
+  return {
+    id: progress.habit.id,
+    title: progress.habit.title,
+    description: progress.habit.description || "",
+    color: progress.habit.color,
+    icon: progress.habit.icon,
+    frequency_type: progress.habit.frequency_type,
+    target_count: progress.habit.target_count,
+    period_interval: progress.habit.period_interval,
+    period_unit: progress.habit.period_unit,
+    weekdays: progress.habit.weekdays || [],
+    reminder_enabled: Boolean(progress.reminder?.is_enabled),
+    reminder_time: progress.reminder?.time_of_day || "09:00"
+  };
+}
+
+export function Dashboard() {
+  const [state, setState] = useState<TrackerState | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [form, setForm] = useState<HabitForm>(defaultForm);
+  const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
+  const [importMode, setImportMode] = useState<"json" | "csv">("json");
+  const [importText, setImportText] = useState("");
+  const [importPreview, setImportPreview] = useState<ImportPreview | null>(null);
+  const [achievementModal, setAchievementModal] = useState<UnlockedAchievement | null>(null);
+  const [reminderMessage, setReminderMessage] = useState("");
+  const [busy, setBusy] = useState(false);
+
+  async function loadState() {
+    const response = await fetch("/api/state", { cache: "no-store" });
+    const nextState = (await response.json()) as TrackerState;
+    setState(nextState);
+    setSelectedHabitId((current) => current || nextState.habits[0]?.habit.id || null);
+    setLoading(false);
+  }
+
+  useEffect(() => {
+    void loadState();
+  }, []);
+
+  const selectedHabit = useMemo(
+    () => state?.habits.find((item) => item.habit.id === selectedHabitId) || state?.habits[0] || null,
+    [selectedHabitId, state]
+  );
+
+  async function submitHabit(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    setBusy(true);
+
+    const payload = {
+      title: form.title.trim(),
+      description: form.description.trim() || null,
+      color: form.color,
+      icon: form.icon,
+      frequency_type: form.frequency_type,
+      target_count: Number(form.target_count),
+      period_interval: Number(form.period_interval),
+      period_unit: form.period_unit,
+      weekdays: form.frequency_type === "custom" ? form.weekdays : null,
+      reminder: {
+        is_enabled: form.reminder_enabled,
+        time_of_day: form.reminder_time,
+        weekdays: form.frequency_type === "custom" ? form.weekdays : null
+      }
+    };
+
+    const response = await fetch(form.id ? `/api/habits/${form.id}` : "/api/habits", {
+      method: form.id ? "PATCH" : "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    });
+
+    setState((await response.json()) as TrackerState);
+    setForm(defaultForm);
+    setBusy(false);
+  }
+
+  async function checkIn(habitId: string) {
+    setBusy(true);
+    const response = await fetch(`/api/habits/${habitId}/events`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ value: 1, source: "manual" })
+    });
+    const nextState = (await response.json()) as TrackerState & { unlocked?: string[] };
+    setState(nextState);
+
+    const unlockedCode = nextState.unlocked?.[0];
+    if (unlockedCode) {
+      const unlocked = nextState.achievements.find((item) => item.achievement.code === unlockedCode);
+      if (unlocked) {
+        setAchievementModal(unlocked);
+      }
+    }
+
+    setBusy(false);
+  }
+
+  async function archiveHabit(habitId: string) {
+    setBusy(true);
+    const response = await fetch(`/api/habits/${habitId}`, { method: "DELETE" });
+    setState((await response.json()) as TrackerState);
+    setBusy(false);
+  }
+
+  async function deleteEvent(eventId: string) {
+    setBusy(true);
+    const response = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
+    setState((await response.json()) as TrackerState);
+    setBusy(false);
+  }
+
+  async function downloadExport(format: "json" | "csv") {
+    const response = await fetch(`/api/export${format === "csv" ? "?format=csv" : ""}`);
+    const blob = await response.blob();
+    const href = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = href;
+    link.download = format === "csv" ? "habit-events.csv" : "habit-tracker-export.json";
+    link.click();
+    URL.revokeObjectURL(href);
+  }
+
+  async function previewImport() {
+    setBusy(true);
+    const response = await fetch("/api/import/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: importMode, content: importText })
+    });
+    setImportPreview((await response.json()) as ImportPreview);
+    setBusy(false);
+  }
+
+  async function commitImport() {
+    setBusy(true);
+    const response = await fetch("/api/import/commit", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ kind: importMode, content: importText })
+    });
+    const payload = (await response.json()) as { state: TrackerState; result: ImportPreview };
+    setState(payload.state);
+    setImportPreview(payload.result);
+    setBusy(false);
+  }
+
+  async function testReminders() {
+    const response = await fetch("/api/reminders/test", { method: "POST" });
+    const payload = (await response.json()) as { message: string; reminders: Array<{ habit_title: string; time_of_day: string }> };
+    setReminderMessage(payload.message);
+
+    if ("Notification" in window && Notification.permission === "default") {
+      await Notification.requestPermission();
+    }
+
+    if ("Notification" in window && Notification.permission === "granted" && payload.reminders[0]) {
+      new Notification(payload.reminders[0].habit_title, {
+        body: `Напоминание на ${payload.reminders[0].time_of_day}`
+      });
+    }
+  }
+
+  if (loading || !state) {
+    return (
+      <main className="app-shell loading-shell">
+        <div className="loader" />
+      </main>
+    );
+  }
+
+  return (
+    <main className="app-shell">
+      <section className="topbar">
+        <div>
+          <p className="eyebrow">Habit Tracker</p>
+          <h1>Сегодня</h1>
+        </div>
+        <div className="top-actions">
+          <button className="icon-button" type="button" onClick={() => void testReminders()} title="Проверить напоминания">
+            <Bell size={18} />
+          </button>
+          <button className="icon-button" type="button" onClick={() => void downloadExport("json")} title="Экспорт JSON">
+            <Download size={18} />
+          </button>
+        </div>
+      </section>
+
+      {reminderMessage && <div className="notice">{reminderMessage}</div>}
+
+      <section className="metrics-grid" aria-label="Сводка">
+        <Metric label="Активные" value={state.totals.active_habits} />
+        <Metric label="Закрыто" value={`${state.totals.completed_now}/${state.totals.active_habits}`} />
+        <Metric label="События" value={state.totals.events} />
+        <Metric label="Лучшая серия" value={state.totals.best_streak} />
+      </section>
+
+      <div className="workspace-grid">
+        <section className="habit-list" aria-label="Привычки">
+          {state.habits.map((item) => (
+            <article
+              className={clsx("habit-card", item.is_complete && "complete", selectedHabitId === item.habit.id && "selected")}
+              key={item.habit.id}
+              style={{ "--habit-color": item.habit.color } as CSSProperties}
+            >
+              <button className="habit-main" type="button" onClick={() => setSelectedHabitId(item.habit.id)}>
+                <span className="habit-icon">
+                  <IconByName name={item.habit.icon} />
+                </span>
+                <span className="habit-copy">
+                  <span className="habit-title">{item.habit.title}</span>
+                  <span className="habit-meta">
+                    {formatFrequency(item.habit)} · {item.period_label}
+                  </span>
+                </span>
+              </button>
+              <div className="progress-row">
+                <span>
+                  {item.progress}/{item.target}
+                </span>
+                <span>{item.streak} streak</span>
+              </div>
+              <div className="progress-track">
+                <span style={{ width: `${item.percentage}%` }} />
+              </div>
+              <div className="habit-actions">
+                <button className="icon-button compact" type="button" onClick={() => setForm(formFromHabit(item))} title="Редактировать">
+                  <Pencil size={16} />
+                </button>
+                <button className="icon-button compact danger" type="button" onClick={() => void archiveHabit(item.habit.id)} title="Архивировать">
+                  <Trash2 size={16} />
+                </button>
+                <button className="check-button" type="button" disabled={busy} onClick={() => void checkIn(item.habit.id)}>
+                  <Check size={18} />
+                  Отметить
+                </button>
+              </div>
+            </article>
+          ))}
+        </section>
+
+        <aside className="side-panel">
+          <form className="editor" onSubmit={(event) => void submitHabit(event)}>
+            <div className="panel-heading">
+              <h2>{form.id ? "Привычка" : "Новая привычка"}</h2>
+              {form.id && (
+                <button className="icon-button compact" type="button" onClick={() => setForm(defaultForm)} title="Сбросить форму">
+                  <X size={16} />
+                </button>
+              )}
+            </div>
+
+            <label>
+              Название
+              <input value={form.title} onChange={(event) => setForm({ ...form, title: event.target.value })} required placeholder="Например, медитация" />
+            </label>
+
+            <label>
+              Заметка
+              <textarea
+                value={form.description}
+                onChange={(event) => setForm({ ...form, description: event.target.value })}
+                rows={2}
+                placeholder="Короткий контекст"
+              />
+            </label>
+
+            <div className="control-row">
+              <label>
+                Ритм
+                <select
+                  value={form.frequency_type}
+                  onChange={(event) => {
+                    const frequency = event.target.value as FrequencyType;
+                    setForm({ ...form, frequency_type: frequency, period_unit: getPeriodUnit(frequency), weekdays: frequency === "custom" ? form.weekdays : [] });
+                  }}
+                >
+                  <option value="daily">По дням</option>
+                  <option value="hourly">По часам</option>
+                  <option value="weekly">По неделям</option>
+                  <option value="custom">Дни недели</option>
+                </select>
+              </label>
+
+              <label>
+                Цель
+                <input
+                  type="number"
+                  min={1}
+                  value={form.target_count}
+                  onChange={(event) => setForm({ ...form, target_count: Number(event.target.value) })}
+                />
+              </label>
+            </div>
+
+            <div className="control-row">
+              <label>
+                Интервал
+                <input
+                  type="number"
+                  min={1}
+                  value={form.period_interval}
+                  onChange={(event) => setForm({ ...form, period_interval: Number(event.target.value) })}
+                />
+              </label>
+              <label>
+                Единица
+                <select value={form.period_unit} onChange={(event) => setForm({ ...form, period_unit: event.target.value as PeriodUnit })}>
+                  <option value="hour">Час</option>
+                  <option value="day">День</option>
+                  <option value="week">Неделя</option>
+                </select>
+              </label>
+            </div>
+
+            {form.frequency_type === "custom" && (
+              <div className="weekday-picker" aria-label="Дни недели">
+                {weekdays.map(([value, label]) => (
+                  <button
+                    className={clsx(form.weekdays.includes(value) && "active")}
+                    type="button"
+                    key={value}
+                    onClick={() =>
+                      setForm({
+                        ...form,
+                        weekdays: form.weekdays.includes(value) ? form.weekdays.filter((day) => day !== value) : [...form.weekdays, value].sort()
+                      })
+                    }
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+            )}
+
+            <div className="swatches" aria-label="Цвет">
+              {colorOptions.map((color) => (
+                <button
+                  className={clsx(form.color === color && "active")}
+                  style={{ background: color }}
+                  type="button"
+                  key={color}
+                  onClick={() => setForm({ ...form, color })}
+                  title={color}
+                />
+              ))}
+            </div>
+
+            <label>
+              Иконка
+              <select value={form.icon} onChange={(event) => setForm({ ...form, icon: event.target.value })}>
+                {iconOptions.map(([value, label]) => (
+                  <option value={value} key={value}>
+                    {label}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <div className="reminder-row">
+              <label className="checkbox-label">
+                <input
+                  type="checkbox"
+                  checked={form.reminder_enabled}
+                  onChange={(event) => setForm({ ...form, reminder_enabled: event.target.checked })}
+                />
+                Напоминание
+              </label>
+              <input type="time" value={form.reminder_time} onChange={(event) => setForm({ ...form, reminder_time: event.target.value })} />
+            </div>
+
+            <button className="primary-button" type="submit" disabled={busy || !form.title.trim()}>
+              {form.id ? <Save size={18} /> : <Plus size={18} />}
+              {form.id ? "Сохранить" : "Добавить"}
+            </button>
+          </form>
+        </aside>
+      </div>
+
+      <section className="detail-grid">
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>{selectedHabit?.habit.title || "История"}</h2>
+            <span className="subtle">{selectedHabit?.streak || 0} streak</span>
+          </div>
+          <div className="heatmap" aria-label="История по дням">
+            {selectedHabit?.recent_days.map((day) => (
+              <span
+                key={day.date}
+                className={clsx(day.value > 0 && "filled", day.complete && "complete")}
+                title={`${day.date}: ${day.value}`}
+                style={{ "--habit-color": selectedHabit.habit.color } as CSSProperties}
+              />
+            ))}
+          </div>
+          <div className="event-list">
+            {selectedHabit?.events.length ? (
+              selectedHabit.events.map((event) => (
+                <div className="event-row" key={event.id}>
+                  <span>{formatDateTime(event.occurred_at)}</span>
+                  <strong>+{event.value}</strong>
+                  <button className="icon-button compact danger" type="button" onClick={() => void deleteEvent(event.id)} title="Удалить событие">
+                    <Trash2 size={15} />
+                  </button>
+                </div>
+              ))
+            ) : (
+              <p className="empty">Пока нет отметок.</p>
+            )}
+          </div>
+        </article>
+
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>Ачивки</h2>
+            <Award size={18} />
+          </div>
+          <div className="achievement-grid">
+            {state.achievement_catalog.map((achievement) => {
+              const unlocked = state.achievements.find((item) => item.achievement.code === achievement.code);
+              return (
+                <div className={clsx("achievement-card", achievement.rarity, unlocked && "unlocked")} key={achievement.code}>
+                  <span className="achievement-icon">
+                    <IconByName name={achievement.icon} size={22} />
+                  </span>
+                  <div>
+                    <strong>{achievement.title}</strong>
+                    <span>{unlocked ? "Получено" : achievement.description}</span>
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        </article>
+
+        <article className="detail-panel import-panel">
+          <div className="panel-heading">
+            <h2>Данные</h2>
+            <div className="panel-actions">
+              <button className="icon-button compact" type="button" onClick={() => void downloadExport("json")} title="Скачать JSON">
+                <Download size={15} />
+              </button>
+              <button className="icon-button compact" type="button" onClick={() => void downloadExport("csv")} title="Скачать CSV">
+                <Upload size={15} />
+              </button>
+            </div>
+          </div>
+          <div className="segmented">
+            <button className={clsx(importMode === "json" && "active")} type="button" onClick={() => setImportMode("json")}>
+              JSON
+            </button>
+            <button className={clsx(importMode === "csv" && "active")} type="button" onClick={() => setImportMode("csv")}>
+              CSV
+            </button>
+          </div>
+          <textarea
+            value={importText}
+            onChange={(event) => setImportText(event.target.value)}
+            rows={7}
+            placeholder={importMode === "json" ? "{ ... }" : "habit_title,habit_id,occurred_at,value,note,source"}
+          />
+          {importPreview && (
+            <div className="import-summary">
+              <span>Привычки: {importPreview.habitsCreated}</span>
+              <span>События: {importPreview.eventsCreated}</span>
+              <span>Напоминания: {importPreview.remindersCreated}</span>
+              {importPreview.errors.length > 0 && <strong>Ошибки: {importPreview.errors.length}</strong>}
+            </div>
+          )}
+          <div className="button-row">
+            <button className="secondary-button" type="button" disabled={!importText.trim() || busy} onClick={() => void previewImport()}>
+              <Import size={16} />
+              Предпросмотр
+            </button>
+            <button className="primary-button" type="button" disabled={!importPreview || busy} onClick={() => void commitImport()}>
+              <Upload size={16} />
+              Импорт
+            </button>
+          </div>
+        </article>
+      </section>
+
+      {achievementModal && (
+        <div className="modal-backdrop" role="dialog" aria-modal="true">
+          <div className={clsx("achievement-modal", achievementModal.achievement.rarity)}>
+            <button className="icon-button compact modal-close" type="button" onClick={() => setAchievementModal(null)} title="Закрыть">
+              <X size={16} />
+            </button>
+            <span className="modal-medal">
+              <IconByName name={achievementModal.achievement.icon} size={40} />
+            </span>
+            <p className="eyebrow">Ачивка</p>
+            <h2>{achievementModal.achievement.title}</h2>
+            <p>{achievementModal.achievement.description}</p>
+          </div>
+        </div>
+      )}
+    </main>
+  );
+}
+
+function Metric({ label, value }: { label: string; value: string | number }) {
+  return (
+    <article className="metric-card">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </article>
+  );
+}
