@@ -157,6 +157,21 @@ function getHabitKey(title: string) {
   return title.trim().toLocaleLowerCase("ru-RU");
 }
 
+function formatCooldown(ms: number) {
+  const seconds = Math.max(1, Math.ceil(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const rest = seconds % 60;
+  return minutes > 0 ? `${minutes}:${String(rest).padStart(2, "0")}` : `${seconds} сек.`;
+}
+
+function formatAuthError(message: string) {
+  if (message.toLowerCase().includes("rate limit")) {
+    return "Supabase временно ограничил отправку писем для этого проекта. Подождите несколько минут и попробуйте снова. Для частых приглашений лучше включить custom SMTP или увеличить auth rate limits в Supabase.";
+  }
+
+  return message;
+}
+
 function formFromHabit(progress: HabitProgress): HabitForm {
   return {
     id: progress.habit.id,
@@ -185,6 +200,8 @@ export function Dashboard() {
   const [authEmail, setAuthEmail] = useState("");
   const [authPassword, setAuthPassword] = useState("");
   const [authMessage, setAuthMessage] = useState("");
+  const [emailCooldownUntil, setEmailCooldownUntil] = useState(0);
+  const [nowMs, setNowMs] = useState(Date.now());
   const [form, setForm] = useState<HabitForm>(defaultForm);
   const [editorOpen, setEditorOpen] = useState(false);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
@@ -284,6 +301,11 @@ export function Dashboard() {
     };
   }, [authClient, loadState]);
 
+  useEffect(() => {
+    const timer = window.setInterval(() => setNowMs(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, []);
+
   const selectedHabit = useMemo(
     () => state?.habits.find((item) => item.habit.id === selectedHabitId) || state?.habits[0] || null,
     [selectedHabitId, state]
@@ -292,10 +314,16 @@ export function Dashboard() {
     ? state?.social.habit_leaderboards.find((leaderboard) => leaderboard.habit_key === getHabitKey(selectedHabit.habit.title))
     : null;
   const isEditorOpen = editorOpen || Boolean(form.id);
+  const emailCooldownMs = Math.max(0, emailCooldownUntil - nowMs);
 
   async function submitAuth(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
     if (!authClient) {
+      return;
+    }
+
+    if (authMode === "sign-up" && emailCooldownMs > 0) {
+      setAuthMessage(`Письмо уже запрошено. Попробуйте снова через ${formatCooldown(emailCooldownMs)}.`);
       return;
     }
 
@@ -321,11 +349,15 @@ export function Dashboard() {
         : await authClient.auth.signInWithPassword(credentials);
 
     if (error) {
-      setAuthMessage(error.message);
+      setAuthMessage(formatAuthError(error.message));
+      if (error.message.toLowerCase().includes("rate limit")) {
+        setEmailCooldownUntil(Date.now() + 10 * 60 * 1000);
+      }
     } else if (data.session) {
       setSession(data.session);
       await loadState(data.session);
     } else {
+      setEmailCooldownUntil(Date.now() + 60 * 1000);
       setAuthMessage("Аккаунт создан. Проверьте почту и подтвердите вход.");
     }
 
@@ -334,6 +366,11 @@ export function Dashboard() {
 
   async function resendConfirmation() {
     if (!authClient || !authEmail.trim()) {
+      return;
+    }
+
+    if (emailCooldownMs > 0) {
+      setAuthMessage(`Письмо уже запрошено. Попробуйте снова через ${formatCooldown(emailCooldownMs)}.`);
       return;
     }
 
@@ -346,7 +383,15 @@ export function Dashboard() {
       }
     });
 
-    setAuthMessage(error ? error.message : "Новое письмо подтверждения отправлено.");
+    if (error) {
+      setAuthMessage(formatAuthError(error.message));
+      if (error.message.toLowerCase().includes("rate limit")) {
+        setEmailCooldownUntil(Date.now() + 10 * 60 * 1000);
+      }
+    } else {
+      setEmailCooldownUntil(Date.now() + 60 * 1000);
+      setAuthMessage("Новое письмо подтверждения отправлено.");
+    }
     setBusy(false);
   }
 
@@ -538,6 +583,7 @@ export function Dashboard() {
         password={authPassword}
         message={authMessage}
         busy={busy}
+        emailCooldownMs={emailCooldownMs}
         onModeChange={setAuthMode}
         onNameChange={setAuthName}
         onEmailChange={setAuthEmail}
@@ -1005,6 +1051,7 @@ function AuthScreen({
   password,
   message,
   busy,
+  emailCooldownMs,
   onModeChange,
   onNameChange,
   onEmailChange,
@@ -1018,6 +1065,7 @@ function AuthScreen({
   password: string;
   message: string;
   busy: boolean;
+  emailCooldownMs: number;
   onModeChange: (mode: AuthMode) => void;
   onNameChange: (value: string) => void;
   onEmailChange: (value: string) => void;
@@ -1026,6 +1074,7 @@ function AuthScreen({
   onSubmit: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   const isSignUp = mode === "sign-up";
+  const waitingForEmail = isSignUp && emailCooldownMs > 0;
 
   return (
     <main className="auth-shell">
@@ -1076,14 +1125,14 @@ function AuthScreen({
 
           {message && <div className="notice auth-notice">{message}</div>}
 
-          <button className="primary-button" type="submit" disabled={busy || !email.trim() || password.length < 6}>
+          <button className="primary-button" type="submit" disabled={busy || waitingForEmail || !email.trim() || password.length < 6}>
             {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
-            {isSignUp ? "Зарегистрироваться" : "Войти"}
+            {waitingForEmail ? `Подождать ${formatCooldown(emailCooldownMs)}` : isSignUp ? "Зарегистрироваться" : "Войти"}
           </button>
           {isSignUp && (
-            <button className="secondary-button auth-resend" type="button" disabled={busy || !email.trim()} onClick={onResend}>
+            <button className="secondary-button auth-resend" type="button" disabled={busy || waitingForEmail || !email.trim()} onClick={onResend}>
               <Mail size={16} />
-              Отправить письмо еще раз
+              {waitingForEmail ? `Повтор через ${formatCooldown(emailCooldownMs)}` : "Отправить письмо еще раз"}
             </button>
           )}
         </form>
