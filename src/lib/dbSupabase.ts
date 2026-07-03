@@ -18,6 +18,34 @@ type DbRow = Record<string, unknown>;
 
 let supabaseClient: SupabaseClient | null = null;
 let bootstrapped = false;
+let bootstrapPromise: Promise<void> | null = null;
+
+const starterHabits = [
+  {
+    id: "00000000-0000-4000-8000-000000000001",
+    title: "Вода утром",
+    description: "Стакан воды после пробуждения.",
+    color: "#0ea5e9",
+    icon: "droplet",
+    frequency_type: "daily",
+    target_count: 1,
+    period_interval: 1,
+    period_unit: "day"
+  },
+  {
+    id: "00000000-0000-4000-8000-000000000002",
+    title: "Чтение",
+    description: "Минимум одна сессия чтения.",
+    color: "#f97316",
+    icon: "book-open",
+    frequency_type: "weekly",
+    target_count: 3,
+    period_interval: 1,
+    period_unit: "week"
+  }
+] as const;
+
+const starterWaterReminderId = "00000000-0000-4000-8000-000000000101";
 
 const achievementSeeds = [
   ["first_checkin", "Первый шаг", "Первая отмеченная привычка.", "sparkles", "common", "event_count", 1],
@@ -160,11 +188,7 @@ function mapAchievement(row: DbRow): Achievement {
   };
 }
 
-async function ensureSupabaseBootstrap() {
-  if (bootstrapped) {
-    return;
-  }
-
+async function bootstrapSupabaseData() {
   const client = supabase();
   const timestamp = nowIso();
 
@@ -223,76 +247,118 @@ async function ensureSupabaseBootstrap() {
     }
   }
 
+  await cleanupStarterHabitDuplicates(client);
+
   const { data: existingHabits, error: habitsError } = await client.from("habits").select("id").eq("user_id", LOCAL_USER_ID).limit(1);
   fail(habitsError);
 
   if (!existingHabits?.length) {
-    const waterId = crypto.randomUUID();
-    const readingId = crypto.randomUUID();
-
     fail(
       (
-        await client.from("habits").insert([
-          {
-            id: waterId,
+        await client.from("habits").upsert(
+          starterHabits.map((habit) => ({
+            id: habit.id,
             user_id: LOCAL_USER_ID,
-            title: "Вода утром",
-            description: "Стакан воды после пробуждения.",
-            color: "#0ea5e9",
-            icon: "droplet",
-            frequency_type: "daily",
-            target_count: 1,
-            period_interval: 1,
-            period_unit: "day",
+            title: habit.title,
+            description: habit.description,
+            color: habit.color,
+            icon: habit.icon,
+            frequency_type: habit.frequency_type,
+            target_count: habit.target_count,
+            period_interval: habit.period_interval,
+            period_unit: habit.period_unit,
             weekdays: null,
             starts_at: timestamp,
             ends_at: null,
             is_active: true,
+            created_at: timestamp,
+            updated_at: timestamp
+          })),
+          { onConflict: "id" }
+        )
+      ).error
+    );
+
+    fail(
+      (
+        await client.from("reminders").upsert(
+          {
+            id: starterWaterReminderId,
+            habit_id: starterHabits[0].id,
+            user_id: LOCAL_USER_ID,
+            channel: "in_app",
+            time_of_day: "09:00",
+            timezone: DEFAULT_TIMEZONE,
+            weekdays: [1, 2, 3, 4, 5, 6, 7],
+            is_enabled: true,
+            last_sent_at: null,
             created_at: timestamp,
             updated_at: timestamp
           },
-          {
-            id: readingId,
-            user_id: LOCAL_USER_ID,
-            title: "Чтение",
-            description: "Минимум одна сессия чтения.",
-            color: "#f97316",
-            icon: "book-open",
-            frequency_type: "weekly",
-            target_count: 3,
-            period_interval: 1,
-            period_unit: "week",
-            weekdays: null,
-            starts_at: timestamp,
-            ends_at: null,
-            is_active: true,
-            created_at: timestamp,
-            updated_at: timestamp
-          }
-        ])
-      ).error
-    );
-
-    fail(
-      (
-        await client.from("reminders").insert({
-          id: crypto.randomUUID(),
-          habit_id: waterId,
-          user_id: LOCAL_USER_ID,
-          channel: "in_app",
-          time_of_day: "09:00",
-          timezone: DEFAULT_TIMEZONE,
-          weekdays: [1, 2, 3, 4, 5, 6, 7],
-          is_enabled: true,
-          last_sent_at: null,
-          created_at: timestamp,
-          updated_at: timestamp
-        })
+          { onConflict: "id" }
+        )
       ).error
     );
   }
+}
 
-  bootstrapped = true;
+async function cleanupStarterHabitDuplicates(client: SupabaseClient) {
+  const { data: rows, error } = await client
+    .from("habits")
+    .select("id,title,description,frequency_type,target_count,period_interval,period_unit,created_at")
+    .eq("user_id", LOCAL_USER_ID)
+    .in(
+      "title",
+      starterHabits.map((habit) => habit.title)
+    );
+  fail(error);
+
+  for (const starter of starterHabits) {
+    const matches = (rows || []).filter(
+      (row) =>
+        row.title === starter.title &&
+        row.description === starter.description &&
+        row.frequency_type === starter.frequency_type &&
+        Number(row.target_count) === starter.target_count &&
+        Number(row.period_interval) === starter.period_interval &&
+        row.period_unit === starter.period_unit
+    );
+
+    if (matches.length <= 1) {
+      continue;
+    }
+
+    const ids = matches.map((row) => String(row.id));
+    const { data: eventRows, error: eventError } = await client.from("habit_events").select("habit_id").in("habit_id", ids);
+    fail(eventError);
+
+    const habitIdsWithEvents = new Set((eventRows || []).map((row) => String(row.habit_id)));
+    const sortedMatches = [...matches].sort((a, b) => String(a.created_at).localeCompare(String(b.created_at)));
+    const keep = sortedMatches.find((row) => habitIdsWithEvents.has(String(row.id))) || sortedMatches[0];
+    const deleteIds = sortedMatches.filter((row) => row.id !== keep.id && !habitIdsWithEvents.has(String(row.id))).map((row) => String(row.id));
+
+    if (deleteIds.length) {
+      fail((await client.from("habits").delete().in("id", deleteIds)).error);
+    }
+  }
+}
+
+async function ensureSupabaseBootstrap() {
+  if (bootstrapped) {
+    return;
+  }
+
+  if (!bootstrapPromise) {
+    bootstrapPromise = bootstrapSupabaseData()
+      .then(() => {
+        bootstrapped = true;
+      })
+      .finally(() => {
+        bootstrapPromise = null;
+      });
+  }
+
+  await bootstrapPromise;
 }
 
 export async function getTimezone() {
