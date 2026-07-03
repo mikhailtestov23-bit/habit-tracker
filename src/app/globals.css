@@ -602,6 +602,13 @@ select:focus {
   gap: 8px;
 }
 
+.competition-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1.25fr) minmax(260px, 0.75fr);
+  gap: 12px;
+  align-items: start;
+}
+
 .member-row,
 .leaderboard-row {
   display: grid;
@@ -692,9 +699,30 @@ select:focus {
   margin-bottom: 14px;
 }
 
+.achievement-rail {
+  min-width: 0;
+}
+
+.rail-heading {
+  display: flex;
+  min-height: 34px;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+  color: var(--muted);
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+}
+
+.rail-heading strong {
+  color: var(--ink);
+}
+
 .detail-grid {
   display: grid;
-  grid-template-columns: 1fr 1.1fr 1fr;
+  grid-template-columns: minmax(0, 1.1fr) minmax(0, 1fr);
   gap: 18px;
   margin-top: 18px;
 }
@@ -746,6 +774,11 @@ select:focus {
   gap: 10px;
 }
 
+.compact-achievement-grid {
+  grid-template-columns: 1fr;
+  gap: 8px;
+}
+
 .achievement-card {
   display: grid;
   grid-template-columns: 42px minmax(0, 1fr);
@@ -756,6 +789,12 @@ select:focus {
   border: 1px solid var(--line);
   border-radius: 8px;
   opacity: 0.5;
+}
+
+.compact-achievement-grid .achievement-card {
+  grid-template-columns: 36px minmax(0, 1fr);
+  min-height: 58px;
+  padding: 8px;
 }
 
 .achievement-card.unlocked {
@@ -905,6 +944,7 @@ select:focus {
 @media (max-width: 1180px) {
   .workspace-grid,
   .social-grid,
+  .competition-grid,
   .detail-grid {
     grid-template-columns: 1fr;
   }

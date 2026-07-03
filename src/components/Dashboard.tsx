@@ -619,32 +619,62 @@ export function Dashboard() {
 
         <article className="detail-panel">
           <div className="panel-heading">
-            <h2>Лидерборды</h2>
-            <Medal size={18} />
+            <h2>Лидерборды и ачивки</h2>
+            <div className="panel-actions">
+              <Medal size={18} />
+              <Award size={18} />
+            </div>
           </div>
-          <div className="leaderboard-list">
-            {state.social.habit_leaderboards.length ? (
-              state.social.habit_leaderboards.map((leaderboard) => (
-                <div className="leaderboard-card" key={leaderboard.habit_key}>
-                  <div className="leaderboard-title">
-                    <strong>{leaderboard.title}</strong>
-                    <span>{leaderboard.entries.length} участн.</span>
-                  </div>
-                  {leaderboard.entries.slice(0, 4).map((entry, index) => (
-                    <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
-                      <span className="rank">{index + 1}</span>
-                      <span className="leaderboard-user">{entry.name}</span>
-                      <span>
-                        {entry.progress}/{entry.target}
-                      </span>
-                      <span>{entry.streak}</span>
+          <div className="competition-grid">
+            <div className="leaderboard-list">
+              {state.social.habit_leaderboards.length ? (
+                state.social.habit_leaderboards.map((leaderboard) => (
+                  <div className="leaderboard-card" key={leaderboard.habit_key}>
+                    <div className="leaderboard-title">
+                      <strong>{leaderboard.title}</strong>
+                      <span>{leaderboard.entries.length} участн.</span>
                     </div>
-                  ))}
-                </div>
-              ))
-            ) : (
-              <p className="empty">Лидерборды появятся после первой привычки.</p>
-            )}
+                    {leaderboard.entries.slice(0, 4).map((entry, index) => (
+                      <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
+                        <span className="rank">{index + 1}</span>
+                        <span className="leaderboard-user">{entry.name}</span>
+                        <span>
+                          {entry.progress}/{entry.target}
+                        </span>
+                        <span>{entry.streak}</span>
+                      </div>
+                    ))}
+                  </div>
+                ))
+              ) : (
+                <p className="empty">Лидерборды появятся после первой привычки.</p>
+              )}
+            </div>
+
+            <div className="achievement-rail">
+              <div className="rail-heading">
+                <span>Ачивки</span>
+                <strong>
+                  {state.achievements.length}/{state.achievement_catalog.length}
+                </strong>
+              </div>
+              <div className="achievement-grid compact-achievement-grid">
+                {state.achievement_catalog.map((achievement) => {
+                  const unlocked = state.achievements.find((item) => item.achievement.code === achievement.code);
+                  return (
+                    <div className={clsx("achievement-card", achievement.rarity, unlocked && "unlocked")} key={achievement.code}>
+                      <span className="achievement-icon">
+                        <IconByName name={achievement.icon} size={20} />
+                      </span>
+                      <div>
+                        <strong>{achievement.title}</strong>
+                        <span>{unlocked ? "Получено" : achievement.description}</span>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
           </div>
         </article>
       </section>
@@ -899,29 +929,6 @@ export function Dashboard() {
             ) : (
               <p className="empty">Пока нет отметок.</p>
             )}
-          </div>
-        </article>
-
-        <article className="detail-panel">
-          <div className="panel-heading">
-            <h2>Ачивки</h2>
-            <Award size={18} />
-          </div>
-          <div className="achievement-grid">
-            {state.achievement_catalog.map((achievement) => {
-              const unlocked = state.achievements.find((item) => item.achievement.code === achievement.code);
-              return (
-                <div className={clsx("achievement-card", achievement.rarity, unlocked && "unlocked")} key={achievement.code}>
-                  <span className="achievement-icon">
-                    <IconByName name={achievement.icon} size={22} />
-                  </span>
-                  <div>
-                    <strong>{achievement.title}</strong>
-                    <span>{unlocked ? "Получено" : achievement.description}</span>
-                  </div>
-                </div>
-              );
-            })}
           </div>
         </article>
 
