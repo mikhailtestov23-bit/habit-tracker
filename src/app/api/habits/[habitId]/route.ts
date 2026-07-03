@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { withRequestAuth } from "@/lib/auth";
 import { archiveHabit, updateHabit } from "@/lib/db";
 import { getTrackerState } from "@/lib/state";
 
@@ -32,13 +33,17 @@ const habitUpdateSchema = z.object({
 });
 
 export async function PATCH(request: Request, context: RouteContext) {
-  const { habitId } = await context.params;
-  await updateHabit(habitId, habitUpdateSchema.parse(await request.json()));
-  return NextResponse.json(await getTrackerState());
+  return withRequestAuth(request, async () => {
+    const { habitId } = await context.params;
+    await updateHabit(habitId, habitUpdateSchema.parse(await request.json()));
+    return NextResponse.json(await getTrackerState());
+  });
 }
 
-export async function DELETE(_request: Request, context: RouteContext) {
-  const { habitId } = await context.params;
-  await archiveHabit(habitId);
-  return NextResponse.json(await getTrackerState());
+export async function DELETE(request: Request, context: RouteContext) {
+  return withRequestAuth(request, async () => {
+    const { habitId } = await context.params;
+    await archiveHabit(habitId);
+    return NextResponse.json(await getTrackerState());
+  });
 }

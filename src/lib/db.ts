@@ -48,6 +48,14 @@ export async function getUnlockedAchievements() {
   return adapter().getUnlockedAchievements();
 }
 
+export async function getUserProfile() {
+  return adapter().getUserProfile();
+}
+
+export async function getSocialSnapshot() {
+  return adapter().getSocialSnapshot();
+}
+
 export async function createHabit(...args: Parameters<typeof local.createHabit>) {
   return adapter().createHabit(...args);
 }

@@ -74,6 +74,13 @@ export type UnlockedAchievement = UserAchievement & {
   habit_title: string | null;
 };
 
+export type UserProfile = {
+  id: string;
+  email: string | null;
+  name: string;
+  timezone: string;
+};
+
 export type HabitProgress = {
   habit: Habit;
   progress: number;
@@ -93,17 +100,62 @@ export type HabitProgress = {
 
 export type TrackerState = {
   generated_at: string;
+  user: UserProfile;
   timezone: string;
   habits: HabitProgress[];
   events: HabitEvent[];
   achievements: UnlockedAchievement[];
   achievement_catalog: Achievement[];
+  social: SocialState;
   totals: {
     active_habits: number;
     completed_now: number;
     events: number;
     best_streak: number;
   };
+};
+
+export type SocialMember = {
+  user_id: string;
+  name: string;
+  email: string | null;
+  active_habits: number;
+  completed_now: number;
+  events: number;
+  best_streak: number;
+  score: number;
+};
+
+export type HabitLeaderboardEntry = {
+  user_id: string;
+  name: string;
+  habit_id: string;
+  progress: number;
+  target: number;
+  percentage: number;
+  streak: number;
+  events: number;
+  is_complete: boolean;
+  color: string;
+  icon: string;
+};
+
+export type HabitLeaderboard = {
+  habit_key: string;
+  title: string;
+  entries: HabitLeaderboardEntry[];
+};
+
+export type SocialState = {
+  members: SocialMember[];
+  habit_leaderboards: HabitLeaderboard[];
+};
+
+export type SocialSnapshot = {
+  users: UserProfile[];
+  habits: Habit[];
+  events: HabitEvent[];
+  reminders: Reminder[];
 };
 
 export type ImportPayload = {

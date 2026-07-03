@@ -7,6 +7,7 @@ import {
   BookOpen,
   Check,
   CircleCheck,
+  Copy,
   Crown,
   Download,
   Droplet,
@@ -14,6 +15,10 @@ import {
   Flame,
   Import,
   Leaf,
+  LogIn,
+  LogOut,
+  Mail,
+  Medal,
   Moon,
   Pencil,
   Plus,
@@ -23,12 +28,16 @@ import {
   Trash2,
   Trophy,
   Upload,
+  UserPlus,
+  Users,
   X
 } from "lucide-react";
+import type { Session } from "@supabase/supabase-js";
 import type { CSSProperties, FormEvent } from "react";
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import clsx from "clsx";
 import { FrequencyType, Habit, HabitProgress, PeriodUnit, TrackerState, UnlockedAchievement } from "@/lib/types";
+import { getSupabaseBrowserClient, hasBrowserSupabaseConfig } from "@/lib/supabaseBrowser";
 
 type HabitForm = {
   id?: string;
@@ -51,6 +60,8 @@ type ImportPreview = {
   remindersCreated: number;
   errors: string[];
 };
+
+type AuthMode = "sign-in" | "sign-up";
 
 const iconMap = {
   "circle-check": CircleCheck,
@@ -142,6 +153,10 @@ function getPeriodUnit(frequency: FrequencyType): PeriodUnit {
   return "day";
 }
 
+function getHabitKey(title: string) {
+  return title.trim().toLocaleLowerCase("ru-RU");
+}
+
 function formFromHabit(progress: HabitProgress): HabitForm {
   return {
     id: progress.habit.id,
@@ -160,8 +175,16 @@ function formFromHabit(progress: HabitProgress): HabitForm {
 }
 
 export function Dashboard() {
+  const authClient = useMemo(() => (hasBrowserSupabaseConfig() ? getSupabaseBrowserClient() : null), []);
   const [state, setState] = useState<TrackerState | null>(null);
   const [loading, setLoading] = useState(true);
+  const [authReady, setAuthReady] = useState(!authClient);
+  const [session, setSession] = useState<Session | null>(null);
+  const [authMode, setAuthMode] = useState<AuthMode>("sign-in");
+  const [authName, setAuthName] = useState("");
+  const [authEmail, setAuthEmail] = useState("");
+  const [authPassword, setAuthPassword] = useState("");
+  const [authMessage, setAuthMessage] = useState("");
   const [form, setForm] = useState<HabitForm>(defaultForm);
   const [selectedHabitId, setSelectedHabitId] = useState<string | null>(null);
   const [importMode, setImportMode] = useState<"json" | "csv">("json");
@@ -171,22 +194,155 @@ export function Dashboard() {
   const [reminderMessage, setReminderMessage] = useState("");
   const [busy, setBusy] = useState(false);
 
-  async function loadState() {
-    const response = await fetch("/api/state", { cache: "no-store" });
+  const authHeaders = useCallback(async (sessionOverride?: Session | null) => {
+    if (!authClient) {
+      return {};
+    }
+
+    const token = sessionOverride?.access_token || (await authClient.auth.getSession()).data.session?.access_token;
+    return token ? { authorization: `Bearer ${token}` } : {};
+  }, [authClient]);
+
+  const apiFetch = useCallback(async (path: string, init: RequestInit = {}, sessionOverride?: Session | null) => {
+    const headers = new Headers(init.headers);
+    const auth = await authHeaders(sessionOverride);
+
+    for (const [key, value] of Object.entries(auth)) {
+      headers.set(key, value);
+    }
+
+    const response = await fetch(path, { ...init, headers });
+    if (response.status === 401) {
+      setState(null);
+      setSession(null);
+      setAuthMessage("Войдите в аккаунт, чтобы продолжить.");
+    }
+
+    return response;
+  }, [authHeaders]);
+
+  const loadState = useCallback(async (sessionOverride?: Session | null) => {
+    setLoading(true);
+    const response = await apiFetch("/api/state", { cache: "no-store" }, sessionOverride);
+    if (!response.ok) {
+      setLoading(false);
+      return;
+    }
+
     const nextState = (await response.json()) as TrackerState;
     setState(nextState);
     setSelectedHabitId((current) => current || nextState.habits[0]?.habit.id || null);
     setLoading(false);
-  }
+  }, [apiFetch]);
 
   useEffect(() => {
-    void loadState();
-  }, []);
+    let mounted = true;
+
+    if (!authClient) {
+      setAuthReady(true);
+      void loadState(null);
+      return () => {
+        mounted = false;
+      };
+    }
+
+    authClient.auth.getSession().then(({ data }) => {
+      if (!mounted) {
+        return;
+      }
+
+      setSession(data.session);
+      setAuthReady(true);
+      if (data.session) {
+        void loadState(data.session);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    const {
+      data: { subscription }
+    } = authClient.auth.onAuthStateChange((_event, nextSession) => {
+      if (!mounted) {
+        return;
+      }
+
+      setSession(nextSession);
+      setState(null);
+      setSelectedHabitId(null);
+      if (nextSession) {
+        void loadState(nextSession);
+      } else {
+        setLoading(false);
+      }
+    });
+
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
+  }, [authClient, loadState]);
 
   const selectedHabit = useMemo(
     () => state?.habits.find((item) => item.habit.id === selectedHabitId) || state?.habits[0] || null,
     [selectedHabitId, state]
   );
+  const selectedLeaderboard = selectedHabit
+    ? state?.social.habit_leaderboards.find((leaderboard) => leaderboard.habit_key === getHabitKey(selectedHabit.habit.title))
+    : null;
+
+  async function submitAuth(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    if (!authClient) {
+      return;
+    }
+
+    setBusy(true);
+    setAuthMessage("");
+
+    const credentials = {
+      email: authEmail.trim(),
+      password: authPassword
+    };
+
+    const { data, error } =
+      authMode === "sign-up"
+        ? await authClient.auth.signUp({
+            ...credentials,
+            options: {
+              data: {
+                name: authName.trim() || authEmail.split("@")[0]
+              }
+            }
+          })
+        : await authClient.auth.signInWithPassword(credentials);
+
+    if (error) {
+      setAuthMessage(error.message);
+    } else if (data.session) {
+      setSession(data.session);
+      await loadState(data.session);
+    } else {
+      setAuthMessage("Аккаунт создан. Проверьте почту и подтвердите вход.");
+    }
+
+    setBusy(false);
+  }
+
+  async function signOut() {
+    setBusy(true);
+    await authClient?.auth.signOut();
+    setSession(null);
+    setState(null);
+    setSelectedHabitId(null);
+    setBusy(false);
+  }
+
+  async function copyInviteLink() {
+    const inviteUrl = window.location.origin;
+    await navigator.clipboard?.writeText(inviteUrl);
+    setReminderMessage("Ссылка приглашения скопирована.");
+  }
 
   async function submitHabit(event: FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -209,11 +365,15 @@ export function Dashboard() {
       }
     };
 
-    const response = await fetch(form.id ? `/api/habits/${form.id}` : "/api/habits", {
+    const response = await apiFetch(form.id ? `/api/habits/${form.id}` : "/api/habits", {
       method: form.id ? "PATCH" : "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload)
     });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
 
     setState((await response.json()) as TrackerState);
     setForm(defaultForm);
@@ -222,11 +382,16 @@ export function Dashboard() {
 
   async function checkIn(habitId: string) {
     setBusy(true);
-    const response = await fetch(`/api/habits/${habitId}/events`, {
+    const response = await apiFetch(`/api/habits/${habitId}/events`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ value: 1, source: "manual" })
     });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
+
     const nextState = (await response.json()) as TrackerState & { unlocked?: string[] };
     setState(nextState);
 
@@ -243,20 +408,34 @@ export function Dashboard() {
 
   async function archiveHabit(habitId: string) {
     setBusy(true);
-    const response = await fetch(`/api/habits/${habitId}`, { method: "DELETE" });
+    const response = await apiFetch(`/api/habits/${habitId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
+
     setState((await response.json()) as TrackerState);
     setBusy(false);
   }
 
   async function deleteEvent(eventId: string) {
     setBusy(true);
-    const response = await fetch(`/api/events/${eventId}`, { method: "DELETE" });
+    const response = await apiFetch(`/api/events/${eventId}`, { method: "DELETE" });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
+
     setState((await response.json()) as TrackerState);
     setBusy(false);
   }
 
   async function downloadExport(format: "json" | "csv") {
-    const response = await fetch(`/api/export${format === "csv" ? "?format=csv" : ""}`);
+    const response = await apiFetch(`/api/export${format === "csv" ? "?format=csv" : ""}`);
+    if (!response.ok) {
+      return;
+    }
+
     const blob = await response.blob();
     const href = URL.createObjectURL(blob);
     const link = document.createElement("a");
@@ -268,22 +447,32 @@ export function Dashboard() {
 
   async function previewImport() {
     setBusy(true);
-    const response = await fetch("/api/import/preview", {
+    const response = await apiFetch("/api/import/preview", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: importMode, content: importText })
     });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
+
     setImportPreview((await response.json()) as ImportPreview);
     setBusy(false);
   }
 
   async function commitImport() {
     setBusy(true);
-    const response = await fetch("/api/import/commit", {
+    const response = await apiFetch("/api/import/commit", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ kind: importMode, content: importText })
     });
+    if (!response.ok) {
+      setBusy(false);
+      return;
+    }
+
     const payload = (await response.json()) as { state: TrackerState; result: ImportPreview };
     setState(payload.state);
     setImportPreview(payload.result);
@@ -291,7 +480,11 @@ export function Dashboard() {
   }
 
   async function testReminders() {
-    const response = await fetch("/api/reminders/test", { method: "POST" });
+    const response = await apiFetch("/api/reminders/test", { method: "POST" });
+    if (!response.ok) {
+      return;
+    }
+
     const payload = (await response.json()) as { message: string; reminders: Array<{ habit_title: string; time_of_day: string }> };
     setReminderMessage(payload.message);
 
@@ -304,6 +497,32 @@ export function Dashboard() {
         body: `Напоминание на ${payload.reminders[0].time_of_day}`
       });
     }
+  }
+
+  if (!authReady) {
+    return (
+      <main className="app-shell loading-shell">
+        <div className="loader" />
+      </main>
+    );
+  }
+
+  if (authClient && !session) {
+    return (
+      <AuthScreen
+        mode={authMode}
+        name={authName}
+        email={authEmail}
+        password={authPassword}
+        message={authMessage}
+        busy={busy}
+        onModeChange={setAuthMode}
+        onNameChange={setAuthName}
+        onEmailChange={setAuthEmail}
+        onPasswordChange={setAuthPassword}
+        onSubmit={(event) => void submitAuth(event)}
+      />
+    );
   }
 
   if (loading || !state) {
@@ -322,12 +541,24 @@ export function Dashboard() {
           <h1>Сегодня</h1>
         </div>
         <div className="top-actions">
+          <div className="user-chip" title={state.user.email || state.user.name}>
+            <Mail size={16} />
+            <span>{state.user.name}</span>
+          </div>
+          <button className="icon-button" type="button" onClick={() => void copyInviteLink()} title="Скопировать приглашение">
+            <Copy size={18} />
+          </button>
           <button className="icon-button" type="button" onClick={() => void testReminders()} title="Проверить напоминания">
             <Bell size={18} />
           </button>
           <button className="icon-button" type="button" onClick={() => void downloadExport("json")} title="Экспорт JSON">
             <Download size={18} />
           </button>
+          {authClient && (
+            <button className="icon-button" type="button" onClick={() => void signOut()} title="Выйти">
+              <LogOut size={18} />
+            </button>
+          )}
         </div>
       </section>
 
@@ -338,6 +569,7 @@ export function Dashboard() {
         <Metric label="Закрыто" value={`${state.totals.completed_now}/${state.totals.active_habits}`} />
         <Metric label="События" value={state.totals.events} />
         <Metric label="Лучшая серия" value={state.totals.best_streak} />
+        <Metric label="Участники" value={state.social.members.length} />
       </section>
 
       <div className="workspace-grid">
@@ -522,6 +754,60 @@ export function Dashboard() {
         </aside>
       </div>
 
+      <section className="social-grid" aria-label="Командный прогресс">
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>Общая лига</h2>
+            <Users size={18} />
+          </div>
+          <div className="member-list">
+            {state.social.members.map((member, index) => (
+              <div className={clsx("member-row", member.user_id === state.user.id && "current")} key={member.user_id}>
+                <span className="rank">{index + 1}</span>
+                <div>
+                  <strong>{member.name}</strong>
+                  <span>
+                    {member.completed_now}/{member.active_habits} сегодня · {member.best_streak} streak
+                  </span>
+                </div>
+                <strong>{member.score}</strong>
+              </div>
+            ))}
+          </div>
+        </article>
+
+        <article className="detail-panel">
+          <div className="panel-heading">
+            <h2>Лидерборды</h2>
+            <Medal size={18} />
+          </div>
+          <div className="leaderboard-list">
+            {state.social.habit_leaderboards.length ? (
+              state.social.habit_leaderboards.map((leaderboard) => (
+                <div className="leaderboard-card" key={leaderboard.habit_key}>
+                  <div className="leaderboard-title">
+                    <strong>{leaderboard.title}</strong>
+                    <span>{leaderboard.entries.length} участн.</span>
+                  </div>
+                  {leaderboard.entries.slice(0, 4).map((entry, index) => (
+                    <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
+                      <span className="rank">{index + 1}</span>
+                      <span className="leaderboard-user">{entry.name}</span>
+                      <span>
+                        {entry.progress}/{entry.target}
+                      </span>
+                      <span>{entry.streak}</span>
+                    </div>
+                  ))}
+                </div>
+              ))
+            ) : (
+              <p className="empty">Лидерборды появятся после первой привычки.</p>
+            )}
+          </div>
+        </article>
+      </section>
+
       <section className="detail-grid">
         <article className="detail-panel">
           <div className="panel-heading">
@@ -538,6 +824,20 @@ export function Dashboard() {
               />
             ))}
           </div>
+          {selectedLeaderboard && (
+            <div className="selected-leaderboard">
+              {selectedLeaderboard.entries.slice(0, 5).map((entry, index) => (
+                <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
+                  <span className="rank">{index + 1}</span>
+                  <span className="leaderboard-user">{entry.name}</span>
+                  <span>
+                    {entry.progress}/{entry.target}
+                  </span>
+                  <span>{entry.streak}</span>
+                </div>
+              ))}
+            </div>
+          )}
           <div className="event-list">
             {selectedHabit?.events.length ? (
               selectedHabit.events.map((event) => (
@@ -640,6 +940,92 @@ export function Dashboard() {
           </div>
         </div>
       )}
+    </main>
+  );
+}
+
+function AuthScreen({
+  mode,
+  name,
+  email,
+  password,
+  message,
+  busy,
+  onModeChange,
+  onNameChange,
+  onEmailChange,
+  onPasswordChange,
+  onSubmit
+}: {
+  mode: AuthMode;
+  name: string;
+  email: string;
+  password: string;
+  message: string;
+  busy: boolean;
+  onModeChange: (mode: AuthMode) => void;
+  onNameChange: (value: string) => void;
+  onEmailChange: (value: string) => void;
+  onPasswordChange: (value: string) => void;
+  onSubmit: (event: FormEvent<HTMLFormElement>) => void;
+}) {
+  const isSignUp = mode === "sign-up";
+
+  return (
+    <main className="auth-shell">
+      <section className="auth-panel">
+        <div className="auth-brand">
+          <span className="auth-logo">
+            <Users size={26} />
+          </span>
+          <div>
+            <p className="eyebrow">Habit Tracker</p>
+            <h1>{isSignUp ? "Создать аккаунт" : "Войти"}</h1>
+          </div>
+        </div>
+
+        <div className="segmented auth-tabs">
+          <button className={clsx(mode === "sign-in" && "active")} type="button" onClick={() => onModeChange("sign-in")}>
+            Вход
+          </button>
+          <button className={clsx(isSignUp && "active")} type="button" onClick={() => onModeChange("sign-up")}>
+            Регистрация
+          </button>
+        </div>
+
+        <form className="auth-form" onSubmit={onSubmit}>
+          {isSignUp && (
+            <label>
+              Имя
+              <input value={name} onChange={(event) => onNameChange(event.target.value)} placeholder="Как показывать в рейтинге" />
+            </label>
+          )}
+
+          <label>
+            Email
+            <input type="email" value={email} onChange={(event) => onEmailChange(event.target.value)} placeholder="you@example.com" required />
+          </label>
+
+          <label>
+            Пароль
+            <input
+              type="password"
+              value={password}
+              onChange={(event) => onPasswordChange(event.target.value)}
+              minLength={6}
+              placeholder="Минимум 6 символов"
+              required
+            />
+          </label>
+
+          {message && <div className="notice auth-notice">{message}</div>}
+
+          <button className="primary-button" type="submit" disabled={busy || !email.trim() || password.length < 6}>
+            {isSignUp ? <UserPlus size={18} /> : <LogIn size={18} />}
+            {isSignUp ? "Зарегистрироваться" : "Войти"}
+          </button>
+        </form>
+      </section>
     </main>
   );
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { withRequestAuth } from "@/lib/auth";
 import { deleteEvent } from "@/lib/db";
 import { getTrackerState } from "@/lib/state";
 
@@ -8,8 +9,10 @@ type RouteContext = {
   params: Promise<{ eventId: string }>;
 };
 
-export async function DELETE(_request: Request, context: RouteContext) {
-  const { eventId } = await context.params;
-  await deleteEvent(eventId);
-  return NextResponse.json(await getTrackerState());
+export async function DELETE(request: Request, context: RouteContext) {
+  return withRequestAuth(request, async () => {
+    const { eventId } = await context.params;
+    await deleteEvent(eventId);
+    return NextResponse.json(await getTrackerState());
+  });
 }

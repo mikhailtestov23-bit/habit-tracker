@@ -57,6 +57,68 @@ button:disabled {
   place-items: center;
 }
 
+.auth-shell {
+  display: grid;
+  min-height: 100svh;
+  place-items: center;
+  padding: 20px;
+}
+
+.auth-panel {
+  width: min(440px, 100%);
+  padding: 20px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  box-shadow: var(--shadow);
+}
+
+.auth-brand {
+  display: grid;
+  grid-template-columns: 52px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  margin-bottom: 18px;
+}
+
+.auth-brand h1 {
+  margin: 0;
+  font-size: 30px;
+  line-height: 1.05;
+  letter-spacing: 0;
+}
+
+.auth-logo {
+  display: grid;
+  width: 52px;
+  height: 52px;
+  place-items: center;
+  color: #fff;
+  background: var(--ink);
+  border-radius: 8px;
+}
+
+.auth-tabs {
+  margin-bottom: 16px;
+}
+
+.auth-tabs button {
+  flex: 1;
+}
+
+.auth-form label {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 12px;
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.auth-notice {
+  margin-bottom: 12px;
+}
+
 .loader {
   width: 44px;
   height: 44px;
@@ -110,6 +172,11 @@ button:disabled {
   gap: 8px;
 }
 
+.top-actions {
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+
 .icon-button {
   display: inline-grid;
   width: 42px;
@@ -137,6 +204,26 @@ button:disabled {
   color: var(--rose);
 }
 
+.user-chip {
+  display: inline-flex;
+  max-width: 220px;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  padding: 0 12px;
+  color: var(--muted);
+  background: var(--surface-strong);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.user-chip span {
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .notice {
   margin-bottom: 18px;
   padding: 12px 14px;
@@ -148,7 +235,7 @@ button:disabled {
 
 .metrics-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(5, minmax(0, 1fr));
   gap: 12px;
   margin-bottom: 18px;
 }
@@ -446,6 +533,110 @@ select:focus {
   width: 100%;
 }
 
+.social-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.4fr);
+  gap: 18px;
+  margin-top: 18px;
+}
+
+.member-list,
+.leaderboard-list,
+.selected-leaderboard {
+  display: grid;
+  gap: 8px;
+}
+
+.member-row,
+.leaderboard-row {
+  display: grid;
+  min-height: 42px;
+  align-items: center;
+  gap: 8px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.member-row {
+  grid-template-columns: 34px minmax(0, 1fr) auto;
+  padding: 0 10px 0 4px;
+}
+
+.member-row.current,
+.leaderboard-row.current {
+  border-color: var(--teal);
+  box-shadow: inset 0 0 0 1px rgba(20, 184, 166, 0.25);
+}
+
+.member-row strong,
+.member-row span,
+.leaderboard-row span {
+  min-width: 0;
+}
+
+.member-row div {
+  min-width: 0;
+}
+
+.member-row div strong,
+.member-row div span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-row div span,
+.leaderboard-title span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.rank {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  place-items: center;
+  color: var(--muted);
+  background: #f1ece4;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.leaderboard-card {
+  padding: 10px;
+  background: #fff;
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+
+.leaderboard-title {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.leaderboard-row {
+  grid-template-columns: 34px minmax(0, 1fr) 64px 42px;
+  padding: 4px 8px 4px 4px;
+  font-size: 13px;
+}
+
+.leaderboard-user {
+  overflow: hidden;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.selected-leaderboard {
+  margin-bottom: 14px;
+}
+
 .detail-grid {
   display: grid;
   grid-template-columns: 1fr 1.1fr 1fr;
@@ -658,6 +849,7 @@ select:focus {
 
 @media (max-width: 1180px) {
   .workspace-grid,
+  .social-grid,
   .detail-grid {
     grid-template-columns: 1fr;
   }
@@ -680,6 +872,19 @@ select:focus {
   .habit-list,
   .achievement-grid {
     grid-template-columns: 1fr;
+  }
+
+  .topbar {
+    align-items: flex-start;
+    flex-direction: column;
+  }
+
+  .top-actions {
+    justify-content: flex-start;
+  }
+
+  .user-chip {
+    max-width: 100%;
   }
 
   .habit-actions {

@@ -1,4 +1,5 @@
 import { createClient, SupabaseClient } from "@supabase/supabase-js";
+import { createHash } from "node:crypto";
 import {
   Achievement,
   EventSource,
@@ -9,20 +10,22 @@ import {
   PeriodUnit,
   Reminder,
   ReminderChannel,
+  SocialSnapshot,
   UnlockedAchievement
 } from "@/lib/types";
 import { DEFAULT_TIMEZONE, LOCAL_USER_ID } from "@/lib/dbLocal";
+import { getRequestUser } from "@/lib/requestContext";
 import { nowIso } from "@/lib/time";
 
 type DbRow = Record<string, unknown>;
 
 let supabaseClient: SupabaseClient | null = null;
-let bootstrapped = false;
-let bootstrapPromise: Promise<void> | null = null;
+const bootstrappedUsers = new Set<string>();
+const bootstrapPromises = new Map<string, Promise<void>>();
 
 const starterHabits = [
   {
-    id: "00000000-0000-4000-8000-000000000001",
+    key: "water",
     title: "Вода утром",
     description: "Стакан воды после пробуждения.",
     color: "#0ea5e9",
@@ -33,7 +36,7 @@ const starterHabits = [
     period_unit: "day"
   },
   {
-    id: "00000000-0000-4000-8000-000000000002",
+    key: "reading",
     title: "Чтение",
     description: "Минимум одна сессия чтения.",
     color: "#f97316",
@@ -44,8 +47,6 @@ const starterHabits = [
     period_unit: "week"
   }
 ] as const;
-
-const starterWaterReminderId = "00000000-0000-4000-8000-000000000101";
 
 const achievementSeeds = [
   ["first_checkin", "Первый шаг", "Первая отмеченная привычка.", "sparkles", "common", "event_count", 1],
@@ -92,6 +93,26 @@ function fail(error: unknown) {
   if (error) {
     throw new Error(error instanceof Error ? error.message : JSON.stringify(error));
   }
+}
+
+function currentUser() {
+  const requestUser = getRequestUser();
+  return {
+    id: requestUser?.id || LOCAL_USER_ID,
+    email: requestUser?.email || null,
+    name: requestUser?.name || "Local user",
+    timezone: requestUser?.timezone || DEFAULT_TIMEZONE
+  };
+}
+
+function currentUserId() {
+  return currentUser().id;
+}
+
+function stableUuid(seed: string) {
+  const hash = createHash("sha256").update(seed).digest("hex");
+  const variant = ((Number.parseInt(hash[16], 16) & 0x3) | 0x8).toString(16);
+  return `${hash.slice(0, 8)}-${hash.slice(8, 12)}-4${hash.slice(13, 16)}-${variant}${hash.slice(17, 20)}-${hash.slice(20, 32)}`;
 }
 
 function normalizeWeekdays(value: unknown): number[] | null {
@@ -188,26 +209,17 @@ function mapAchievement(row: DbRow): Achievement {
   };
 }
 
-async function bootstrapSupabaseData() {
-  const client = supabase();
-  const timestamp = nowIso();
+function mapUser(row: DbRow) {
+  const email = row.email ? String(row.email) : null;
+  return {
+    id: String(row.id),
+    email,
+    name: row.name ? String(row.name) : email?.split("@")[0] || "Участник",
+    timezone: row.timezone ? String(row.timezone) : DEFAULT_TIMEZONE
+  };
+}
 
-  fail(
-    (
-      await client.from("users").upsert(
-        {
-          id: LOCAL_USER_ID,
-          email: null,
-          name: "Local user",
-          timezone: DEFAULT_TIMEZONE,
-          created_at: timestamp,
-          updated_at: timestamp
-        },
-        { onConflict: "id" }
-      )
-    ).error
-  );
-
+async function seedAchievements(client: SupabaseClient, timestamp: string) {
   for (const [code, title, description, icon, rarity, conditionType, conditionValue] of achievementSeeds) {
     const { data: existing, error: existingError } = await client.from("achievements").select("id").eq("code", code).maybeSingle();
     fail(existingError);
@@ -246,10 +258,33 @@ async function bootstrapSupabaseData() {
       );
     }
   }
+}
 
-  await cleanupStarterHabitDuplicates(client);
+async function bootstrapSupabaseData(user = currentUser()) {
+  const client = supabase();
+  const timestamp = nowIso();
 
-  const { data: existingHabits, error: habitsError } = await client.from("habits").select("id").eq("user_id", LOCAL_USER_ID).limit(1);
+  fail(
+    (
+      await client.from("users").upsert(
+        {
+          id: user.id,
+          email: user.email,
+          name: user.name,
+          timezone: user.timezone,
+          created_at: timestamp,
+          updated_at: timestamp
+        },
+        { onConflict: "id" }
+      )
+    ).error
+  );
+
+  await seedAchievements(client, timestamp);
+
+  await cleanupStarterHabitDuplicates(client, user.id);
+
+  const { data: existingHabits, error: habitsError } = await client.from("habits").select("id").eq("user_id", user.id).limit(1);
   fail(habitsError);
 
   if (!existingHabits?.length) {
@@ -257,8 +292,8 @@ async function bootstrapSupabaseData() {
       (
         await client.from("habits").upsert(
           starterHabits.map((habit) => ({
-            id: habit.id,
-            user_id: LOCAL_USER_ID,
+            id: stableUuid(`${user.id}:starter-habit:${habit.key}`),
+            user_id: user.id,
             title: habit.title,
             description: habit.description,
             color: habit.color,
@@ -283,12 +318,12 @@ async function bootstrapSupabaseData() {
       (
         await client.from("reminders").upsert(
           {
-            id: starterWaterReminderId,
-            habit_id: starterHabits[0].id,
-            user_id: LOCAL_USER_ID,
+            id: stableUuid(`${user.id}:starter-reminder:water`),
+            habit_id: stableUuid(`${user.id}:starter-habit:${starterHabits[0].key}`),
+            user_id: user.id,
             channel: "in_app",
             time_of_day: "09:00",
-            timezone: DEFAULT_TIMEZONE,
+            timezone: user.timezone,
             weekdays: [1, 2, 3, 4, 5, 6, 7],
             is_enabled: true,
             last_sent_at: null,
@@ -302,11 +337,11 @@ async function bootstrapSupabaseData() {
   }
 }
 
-async function cleanupStarterHabitDuplicates(client: SupabaseClient) {
+async function cleanupStarterHabitDuplicates(client: SupabaseClient, userId: string) {
   const { data: rows, error } = await client
     .from("habits")
     .select("id,title,description,frequency_type,target_count,period_interval,period_unit,created_at")
-    .eq("user_id", LOCAL_USER_ID)
+    .eq("user_id", userId)
     .in(
       "title",
       starterHabits.map((habit) => habit.title)
@@ -344,36 +379,39 @@ async function cleanupStarterHabitDuplicates(client: SupabaseClient) {
 }
 
 async function ensureSupabaseBootstrap() {
-  if (bootstrapped) {
+  const user = currentUser();
+  if (bootstrappedUsers.has(user.id)) {
     return;
   }
 
-  if (!bootstrapPromise) {
-    bootstrapPromise = bootstrapSupabaseData()
+  if (!bootstrapPromises.has(user.id)) {
+    const promise = bootstrapSupabaseData(user)
       .then(() => {
-        bootstrapped = true;
+        bootstrappedUsers.add(user.id);
       })
       .finally(() => {
-        bootstrapPromise = null;
+        bootstrapPromises.delete(user.id);
       });
+    bootstrapPromises.set(user.id, promise);
   }
 
-  await bootstrapPromise;
+  await bootstrapPromises.get(user.id);
 }
 
 export async function getTimezone() {
   await ensureSupabaseBootstrap();
-  const { data, error } = await supabase().from("users").select("timezone").eq("id", LOCAL_USER_ID).maybeSingle();
+  const { data, error } = await supabase().from("users").select("timezone").eq("id", currentUserId()).maybeSingle();
   fail(error);
   return data?.timezone || DEFAULT_TIMEZONE;
 }
 
 export async function getHabits() {
   await ensureSupabaseBootstrap();
+  const userId = currentUserId();
   const { data, error } = await supabase()
     .from("habits")
     .select("*")
-    .eq("user_id", LOCAL_USER_ID)
+    .eq("user_id", userId)
     .order("is_active", { ascending: false })
     .order("created_at", { ascending: false });
   fail(error);
@@ -382,14 +420,14 @@ export async function getHabits() {
 
 export async function getEvents() {
   await ensureSupabaseBootstrap();
-  const { data, error } = await supabase().from("habit_events").select("*").eq("user_id", LOCAL_USER_ID).order("occurred_at", { ascending: false });
+  const { data, error } = await supabase().from("habit_events").select("*").eq("user_id", currentUserId()).order("occurred_at", { ascending: false });
   fail(error);
   return (data || []).map(mapEvent);
 }
 
 export async function getReminders() {
   await ensureSupabaseBootstrap();
-  const { data, error } = await supabase().from("reminders").select("*").eq("user_id", LOCAL_USER_ID).order("time_of_day", { ascending: true });
+  const { data, error } = await supabase().from("reminders").select("*").eq("user_id", currentUserId()).order("time_of_day", { ascending: true });
   fail(error);
   return (data || []).map(mapReminder);
 }
@@ -403,8 +441,9 @@ export async function getAchievements() {
 
 export async function getUnlockedAchievements() {
   await ensureSupabaseBootstrap();
+  const userId = currentUserId();
   const [{ data: rows, error }, achievements, habits] = await Promise.all([
-    supabase().from("user_achievements").select("*").eq("user_id", LOCAL_USER_ID).order("unlocked_at", { ascending: false }),
+    supabase().from("user_achievements").select("*").eq("user_id", userId).order("unlocked_at", { ascending: false }),
     getAchievements(),
     getHabits()
   ]);
@@ -430,6 +469,42 @@ export async function getUnlockedAchievements() {
   });
 }
 
+export async function getUserProfile() {
+  await ensureSupabaseBootstrap();
+  const { data, error } = await supabase().from("users").select("*").eq("id", currentUserId()).maybeSingle();
+  fail(error);
+  return data ? mapUser(data) : currentUser();
+}
+
+export async function getSocialSnapshot(): Promise<SocialSnapshot> {
+  await ensureSupabaseBootstrap();
+  const [{ data: usersData, error: usersError }, { data: habitsData, error: habitsError }, { data: eventsData, error: eventsError }, { data: remindersData, error: remindersError }] =
+    await Promise.all([
+      supabase().from("users").select("*").order("created_at", { ascending: true }),
+      supabase().from("habits").select("*").order("created_at", { ascending: false }),
+      supabase().from("habit_events").select("*").order("occurred_at", { ascending: false }),
+      supabase().from("reminders").select("*").order("time_of_day", { ascending: true })
+    ]);
+
+  fail(usersError);
+  fail(habitsError);
+  fail(eventsError);
+  fail(remindersError);
+
+  let users = (usersData || []).map(mapUser);
+  if (currentUserId() !== LOCAL_USER_ID) {
+    users = users.filter((user) => user.id !== LOCAL_USER_ID);
+  }
+
+  const visibleUserIds = new Set(users.map((user) => user.id));
+  return {
+    users,
+    habits: (habitsData || []).map(mapHabit).filter((habit) => visibleUserIds.has(habit.user_id)),
+    events: (eventsData || []).map(mapEvent).filter((event) => visibleUserIds.has(event.user_id)),
+    reminders: (remindersData || []).map(mapReminder).filter((reminder) => visibleUserIds.has(reminder.user_id))
+  };
+}
+
 export async function createHabit(input: {
   id?: string;
   title: string;
@@ -452,12 +527,13 @@ export async function createHabit(input: {
   await ensureSupabaseBootstrap();
   const timestamp = nowIso();
   const id = input.id || crypto.randomUUID();
+  const userId = currentUserId();
 
   fail(
     (
       await supabase().from("habits").insert({
         id,
-        user_id: LOCAL_USER_ID,
+        user_id: userId,
         title: input.title,
         description: input.description ?? null,
         color: input.color,
@@ -535,7 +611,7 @@ export async function updateHabit(
           updated_at: timestamp
         })
         .eq("id", id)
-        .eq("user_id", LOCAL_USER_ID)
+        .eq("user_id", currentUserId())
     ).error
   );
 
@@ -563,12 +639,13 @@ export async function createEvent(input: {
 
   const timestamp = nowIso();
   const id = input.id || crypto.randomUUID();
+  const userId = currentUserId();
   fail(
     (
       await supabase().from("habit_events").insert({
         id,
         habit_id: input.habit_id,
-        user_id: LOCAL_USER_ID,
+        user_id: userId,
         occurred_at: input.occurred_at || timestamp,
         value: input.value ?? 1,
         note: input.note ?? null,
@@ -583,7 +660,7 @@ export async function createEvent(input: {
 
 export async function deleteEvent(id: string) {
   await ensureSupabaseBootstrap();
-  fail((await supabase().from("habit_events").delete().eq("id", id).eq("user_id", LOCAL_USER_ID)).error);
+  fail((await supabase().from("habit_events").delete().eq("id", id).eq("user_id", currentUserId())).error);
 }
 
 export async function upsertReminder(
@@ -598,6 +675,7 @@ export async function upsertReminder(
   await ensureSupabaseBootstrap();
   const existing = (await getReminders()).find((reminder) => reminder.habit_id === habitId);
   const timestamp = nowIso();
+  const userId = currentUserId();
 
   if (!input.is_enabled) {
     if (existing) {
@@ -630,7 +708,7 @@ export async function upsertReminder(
       await supabase().from("reminders").insert({
         id: crypto.randomUUID(),
         habit_id: habitId,
-        user_id: LOCAL_USER_ID,
+        user_id: userId,
         channel: input.channel || "in_app",
         time_of_day: input.time_of_day,
         timezone: await getTimezone(),
@@ -656,7 +734,8 @@ export async function unlockAchievement(code: string, habitId: string | null) {
     return null;
   }
 
-  let existingQuery = supabase().from("user_achievements").select("id").eq("user_id", LOCAL_USER_ID).eq("achievement_id", achievement.id);
+  const userId = currentUserId();
+  let existingQuery = supabase().from("user_achievements").select("id").eq("user_id", userId).eq("achievement_id", achievement.id);
   existingQuery = habitId ? existingQuery.eq("habit_id", habitId) : existingQuery.is("habit_id", null);
   const { data: existing, error: existingError } = await existingQuery.limit(1);
   fail(existingError);
@@ -670,7 +749,7 @@ export async function unlockAchievement(code: string, habitId: string | null) {
     (
       await supabase().from("user_achievements").insert({
         id,
-        user_id: LOCAL_USER_ID,
+        user_id: userId,
         achievement_id: achievement.id,
         habit_id: habitId,
         unlocked_at: nowIso()

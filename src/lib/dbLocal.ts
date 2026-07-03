@@ -11,6 +11,7 @@ import {
   PeriodUnit,
   Reminder,
   ReminderChannel,
+  SocialSnapshot,
   UnlockedAchievement
 } from "@/lib/types";
 import { nowIso } from "@/lib/time";
@@ -372,6 +373,24 @@ export function getUnlockedAchievements() {
       }
     })
   );
+}
+
+export function getUserProfile() {
+  return {
+    id: LOCAL_USER_ID,
+    email: null,
+    name: "Local user",
+    timezone: getTimezone()
+  };
+}
+
+export function getSocialSnapshot(): SocialSnapshot {
+  return {
+    users: [getUserProfile()],
+    habits: getHabits(),
+    events: getEvents(),
+    reminders: getReminders()
+  };
 }
 
 export function createHabit(input: {

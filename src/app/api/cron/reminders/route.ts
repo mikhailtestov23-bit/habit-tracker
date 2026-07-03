@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { getHabits, getReminders, markReminderSent } from "@/lib/db";
+import { getSocialSnapshot, markReminderSent } from "@/lib/db";
 import { getLocalDateKey, getLocalWeekday, nowIso } from "@/lib/time";
 
 export const dynamic = "force-dynamic";
@@ -32,7 +32,7 @@ export async function GET(request: Request) {
   }
 
   const now = new Date();
-  const [habits, reminders] = await Promise.all([getHabits(), getReminders()]);
+  const { habits, reminders } = await getSocialSnapshot();
   const due = reminders.filter((reminder) => {
     if (!reminder.is_enabled) {
       return false;

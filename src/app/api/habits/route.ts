@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
+import { withRequestAuth } from "@/lib/auth";
 import { createHabit } from "@/lib/db";
 import { getTrackerState } from "@/lib/state";
 
@@ -26,12 +27,14 @@ const habitSchema = z.object({
     .optional()
 });
 
-export async function GET() {
-  return NextResponse.json(await getTrackerState());
+export async function GET(request: Request) {
+  return withRequestAuth(request, async () => NextResponse.json(await getTrackerState()));
 }
 
 export async function POST(request: Request) {
-  const input = habitSchema.parse(await request.json());
-  await createHabit(input);
-  return NextResponse.json(await getTrackerState(), { status: 201 });
+  return withRequestAuth(request, async () => {
+    const input = habitSchema.parse(await request.json());
+    await createHabit(input);
+    return NextResponse.json(await getTrackerState(), { status: 201 });
+  });
 }

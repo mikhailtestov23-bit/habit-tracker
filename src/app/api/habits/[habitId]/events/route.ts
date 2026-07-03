@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import { evaluateAchievementsForEvent } from "@/lib/achievements";
+import { withRequestAuth } from "@/lib/auth";
 import { createEvent, getEvents } from "@/lib/db";
 import { getTrackerState } from "@/lib/state";
 
@@ -18,14 +19,18 @@ const eventSchema = z.object({
 });
 
 export async function GET(_request: Request, context: RouteContext) {
-  const { habitId } = await context.params;
-  return NextResponse.json((await getEvents()).filter((event) => event.habit_id === habitId));
+  return withRequestAuth(_request, async () => {
+    const { habitId } = await context.params;
+    return NextResponse.json((await getEvents()).filter((event) => event.habit_id === habitId));
+  });
 }
 
 export async function POST(request: Request, context: RouteContext) {
-  const { habitId } = await context.params;
-  const input = eventSchema.parse(await request.json());
-  await createEvent({ habit_id: habitId, ...input });
-  const unlocked = await evaluateAchievementsForEvent(habitId, input.occurred_at || new Date().toISOString());
-  return NextResponse.json({ ...(await getTrackerState()), unlocked }, { status: 201 });
+  return withRequestAuth(request, async () => {
+    const { habitId } = await context.params;
+    const input = eventSchema.parse(await request.json());
+    await createEvent({ habit_id: habitId, ...input });
+    const unlocked = await evaluateAchievementsForEvent(habitId, input.occurred_at || new Date().toISOString());
+    return NextResponse.json({ ...(await getTrackerState()), unlocked }, { status: 201 });
+  });
 }
