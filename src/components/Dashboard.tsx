@@ -427,6 +427,7 @@ export function Dashboard() {
   const selectedLeaderboard = selectedHabit
     ? state?.social.habit_leaderboards.find((leaderboard) => leaderboard.habit_key === getHabitKey(selectedHabit.habit.title))
     : null;
+  const activeLeaderboard = selectedLeaderboard || state?.social.habit_leaderboards[0] || null;
   const isEditorOpen = editorOpen || Boolean(form.id);
   const emailCooldownMs = Math.max(0, emailCooldownUntil - nowMs);
 
@@ -786,26 +787,56 @@ export function Dashboard() {
             </div>
           </div>
           <div className="competition-grid">
-            <div className="leaderboard-list">
+            <div className="leaderboard-stack">
               {state.social.habit_leaderboards.length ? (
-                state.social.habit_leaderboards.map((leaderboard) => (
-                  <div className="leaderboard-card" key={leaderboard.habit_key}>
-                    <div className="leaderboard-title">
-                      <strong>{leaderboard.title}</strong>
-                      <span>{leaderboard.entries.length} участн.</span>
-                    </div>
-                    {leaderboard.entries.slice(0, 4).map((entry, index) => (
-                      <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
-                        <span className="rank">{index + 1}</span>
-                        <span className="leaderboard-user">{entry.name}</span>
-                        <span>
-                          {entry.progress}/{entry.target}
-                        </span>
-                        <span>{entry.streak}</span>
-                      </div>
-                    ))}
+                <>
+                  <div className="leaderboard-tabs" role="tablist" aria-label="Лидерборды привычек">
+                    {state.social.habit_leaderboards.map((leaderboard) => {
+                      const habit = state.habits.find((item) => getHabitKey(item.habit.title) === leaderboard.habit_key)?.habit;
+                      const isActive = leaderboard.habit_key === activeLeaderboard?.habit_key;
+                      return (
+                        <button
+                          className={clsx("leaderboard-tab", isActive && "active")}
+                          type="button"
+                          role="tab"
+                          aria-selected={isActive}
+                          key={leaderboard.habit_key}
+                          style={{ "--habit-color": habit?.color || "var(--teal)" } as CSSProperties}
+                          onClick={() => {
+                            const matchingHabit = state.habits.find((item) => getHabitKey(item.habit.title) === leaderboard.habit_key);
+                            if (matchingHabit) {
+                              setSelectedHabitId(matchingHabit.habit.id);
+                            }
+                          }}
+                        >
+                          <IconByName name={habit?.icon || "circle-check"} size={15} />
+                          <span>{leaderboard.title}</span>
+                        </button>
+                      );
+                    })}
                   </div>
-                ))
+
+                  {activeLeaderboard && (
+                    <div className="leaderboard-card featured" role="tabpanel">
+                      <div className="leaderboard-title">
+                        <strong>{activeLeaderboard.title}</strong>
+                        <span>{activeLeaderboard.entries.length} участн.</span>
+                      </div>
+                      <div className="leaderboard-list">
+                        {activeLeaderboard.entries.slice(0, 5).map((entry, index) => (
+                          <div className={clsx("leaderboard-row", entry.user_id === state.user.id && "current")} key={`${entry.user_id}-${entry.habit_id}`}>
+                            <span className="rank">{index + 1}</span>
+                            <span className="leaderboard-user">{entry.name}</span>
+                            <span>
+                              {entry.progress}/{entry.target}
+                            </span>
+                            <span>{entry.streak}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </>
               ) : (
                 <p className="empty">Лидерборды появятся после первой привычки.</p>
               )}
@@ -841,54 +872,60 @@ export function Dashboard() {
 
       <div className="workspace-grid">
         <section className="habit-list" aria-label="Привычки">
-          {state.habits.map((item) => (
-            <article
-              className={clsx("habit-card", item.is_complete && "complete", selectedHabitId === item.habit.id && "selected")}
-              key={item.habit.id}
-              style={{ "--habit-color": item.habit.color } as CSSProperties}
-            >
-              <button className="habit-main" type="button" onClick={() => setSelectedHabitId(item.habit.id)}>
-                <span className="habit-icon">
-                  <IconByName name={item.habit.icon} />
-                </span>
-                <span className="habit-copy">
-                  <span className="habit-title">{item.habit.title}</span>
-                  <span className="habit-meta">
-                    {formatFrequency(item.habit)} · {item.period_label}
+          {state.habits.map((item) => {
+            const isSelected = selectedHabit?.habit.id === item.habit.id;
+            return (
+              <article
+                className={clsx("habit-card", item.is_complete && "complete", isSelected && "selected")}
+                key={item.habit.id}
+                style={{ "--habit-color": item.habit.color } as CSSProperties}
+              >
+                <button className="habit-main" type="button" aria-pressed={isSelected} onClick={() => setSelectedHabitId(item.habit.id)}>
+                  <span className="habit-icon">
+                    <IconByName name={item.habit.icon} />
                   </span>
-                </span>
-              </button>
-              <div className="progress-row">
-                <span>
-                  {item.progress}/{item.target}
-                </span>
-                <span>{item.streak} streak</span>
-              </div>
-              <div className="progress-track">
-                <span style={{ width: `${item.percentage}%` }} />
-              </div>
-              <div className="habit-actions">
-                <button
-                  className="icon-button compact"
-                  type="button"
-                  onClick={() => {
-                    setForm(formFromHabit(item));
-                    setEditorOpen(true);
-                  }}
-                  title="Редактировать"
-                >
-                  <Pencil size={16} />
+                  <span className="habit-copy">
+                    <span className="habit-title-row">
+                      <span className="habit-title">{item.habit.title}</span>
+                      {isSelected && <span className="active-pill">Активна</span>}
+                    </span>
+                    <span className="habit-meta">
+                      {formatFrequency(item.habit)} · {item.period_label}
+                    </span>
+                  </span>
                 </button>
-                <button className="icon-button compact danger" type="button" onClick={() => void archiveHabit(item.habit.id)} title="Архивировать">
-                  <Trash2 size={16} />
-                </button>
-                <button className="check-button" type="button" disabled={busy} onClick={() => void checkIn(item.habit.id)}>
-                  <Check size={18} />
-                  Отметить
-                </button>
-              </div>
-            </article>
-          ))}
+                <div className="progress-row">
+                  <span>
+                    {item.progress}/{item.target}
+                  </span>
+                  <span>{item.streak} streak</span>
+                </div>
+                <div className="progress-track">
+                  <span style={{ width: `${item.percentage}%` }} />
+                </div>
+                <div className="habit-actions">
+                  <button
+                    className="icon-button compact"
+                    type="button"
+                    onClick={() => {
+                      setForm(formFromHabit(item));
+                      setEditorOpen(true);
+                    }}
+                    title="Редактировать"
+                  >
+                    <Pencil size={16} />
+                  </button>
+                  <button className="icon-button compact danger" type="button" onClick={() => void archiveHabit(item.habit.id)} title="Архивировать">
+                    <Trash2 size={16} />
+                  </button>
+                  <button className="check-button" type="button" disabled={busy} onClick={() => void checkIn(item.habit.id)}>
+                    <Check size={18} />
+                    Отметить
+                  </button>
+                </div>
+              </article>
+            );
+          })}
         </section>
 
         <aside className="side-panel">
